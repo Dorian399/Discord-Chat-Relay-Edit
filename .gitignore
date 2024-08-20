@@ -1,4 +1,6 @@
 config.js
 ndc_config.lua
 package-lock.json
+ids.json
+connection_log.txt
 /Bot - Nubs Discord Chat Relay/node_modules/

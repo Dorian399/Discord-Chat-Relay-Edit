@@ -110,8 +110,8 @@ async function getSteamAvatar(id) {
 let queue = [];
 let runningQueue = false;
 let replyInteraction;
-let statusTimeout;
-async function sendQueue() {
+let statusTimeout = [];
+async function sendQueue(ws) {
     if (!webhook || runningQueue)
         return; 
 
@@ -167,89 +167,105 @@ async function sendQueue() {
             } break;
 
             case "status": {
-                if (!replyInteraction) return;
-                if (statusTimeout) 
-                    clearTimeout(statusTimeout);
+				if (!replyInteraction) return;
+				if (statusTimeout){
+					clearTimeout(statusTimeout[ws.id]);
+				};
 
-                let [name, steamid, joined, status] = ['Name', 'Steam ID', 'Time Connected', "Status"];
+				let [name, steamid, joined, status] = ['Name', 'Steam ID', 'Time Connected', "Status"];
 
-                let maxNameLength    = name.length;
-                let maxSteamidLength = steamid.length;
-                let maxJoinTimestamp = joined.length;
-                let maxStatus        = status.length
+				let maxNameLength    = name.length;
+				let maxSteamidLength = steamid.length;
+				let maxJoinTimestamp = joined.length;
+				let maxStatus        = status.length;
 
-                let rows = [];
+				let rows = [];
 
-                let now = Math.round(Date.now()/1000);
-                for (let i = 0; i < packet.connectingPlayers.length; i++) {
-                    let data = packet.connectingPlayers[i];
+				let now = Math.round(Date.now() / 1000);
+				for (let i = 0; i < packet.connectingPlayers.length; i++) {
+					let data = packet.connectingPlayers[i];
 
-                    let timeString = 'Unknown';
-                    if (data[2]) {
-                        let timeOnServer = now - data[2];
-                        let hours = Math.floor(timeOnServer / 60 / 60);
-                        let minutes = Math.floor(timeOnServer / 60) % 60;
-                        let seconds = timeOnServer % 60;
+					let timeString = 'Unknown';
+					if (data[2]) {
+						let timeOnServer = now - data[2];
+						let hours = Math.floor(timeOnServer / 60 / 60);
+						let minutes = Math.floor(timeOnServer / 60) % 60;
+						let seconds = timeOnServer % 60;
 
-                        timeString = `${hours}:${minutes < 10 ? `0${minutes}` : minutes}:${seconds < 10 ? `0${seconds}` : seconds}`;
-                    }
+						timeString = `${hours}:${minutes < 10 ? `0${minutes}` : minutes}:${seconds < 10 ? `0${seconds}` : seconds}`;
+					}
 
-                    let currentStatus = "Connecting";
-                    maxNameLength    = Math.max(maxNameLength, data[0].length);
-                    maxSteamidLength = Math.max(maxSteamidLength, data[1].length);
-                    maxJoinTimestamp = Math.max(maxJoinTimestamp, timeString.length);
-                    maxStatus        = Math.max(maxStatus, currentStatus.length);
+					let currentStatus = "Connecting";
+					maxNameLength    = Math.max(maxNameLength, data[0].length);
+					maxSteamidLength = Math.max(maxSteamidLength, data[1].length);
+					maxJoinTimestamp = Math.max(maxJoinTimestamp, timeString.length);
+					maxStatus        = Math.max(maxStatus, currentStatus.length);
 
-                    rows.push([data[0], data[1], timeString, currentStatus]);
-                }
+					rows.push([data[0], data[1], timeString, currentStatus]);
+				}
 
-                for (let i = 0; i < packet.players.length; i++) {
-                    let data = packet.players[i];
+				for (let i = 0; i < packet.players.length; i++) {
+					let data = packet.players[i];
 
-                    if (data.name == undefined) data.name = "[no name received?]";
-                    if (data.steamid == undefined) data.steamid = "[no steamid received?]";
+					if (data.name == undefined) data.name = "[no name received?]";
+					if (data.steamid == undefined) data.steamid = "[no steamid received?]";
 
-                    let timeString = 'Unknown';
-                    if (data.jointime) {
-                        // let timeOnServer = now - data.jointime;
-                        let timeOnServer = Math.round(data.jointime);
-                        let hours = Math.floor(timeOnServer / 60 / 60);
-                        let minutes = Math.floor(timeOnServer / 60) % 60;
-                        let seconds = timeOnServer % 60;
+					let timeString = 'Unknown';
+					if (data.jointime) {
+						let timeOnServer = Math.round(data.jointime);
+						let hours = Math.floor(timeOnServer / 60 / 60);
+						let minutes = Math.floor(timeOnServer / 60) % 60;
+						let seconds = timeOnServer % 60;
 
-                        timeString = `${hours}:${minutes < 10 ? `0${minutes}` : minutes}:${seconds < 10 ? `0${seconds}` : seconds}`;
-                    }
+						timeString = `${hours}:${minutes < 10 ? `0${minutes}` : minutes}:${seconds < 10 ? `0${seconds}` : seconds}`;
+					}
 
-                    let currentStatus = "Active";
-                    if (data.afktime) {
-                        let timeAFK = now - data.afktime;
-                        let hours = Math.floor(timeAFK / 60 / 60);
-                        let minutes = Math.floor(timeAFK / 60) % 60;
-                        let seconds = timeAFK % 60;
+					let currentStatus = "Active";
+					if (data.afktime) {
+						let timeAFK = now - data.afktime;
+						let hours = Math.floor(timeAFK / 60 / 60);
+						let minutes = Math.floor(timeAFK / 60) % 60;
+						let seconds = timeAFK % 60;
 
-                        currentStatus = `AFK for ${hours}:${minutes < 10 ? `0${minutes}` : minutes}:${seconds < 10 ? `0${seconds}` : seconds}`;
-                    }
+						currentStatus = `AFK for ${hours}:${minutes < 10 ? `0${minutes}` : minutes}:${seconds < 10 ? `0${seconds}` : seconds}`;
+					}
 
-                    maxNameLength    = Math.max(maxNameLength, data.name.length);
-                    maxSteamidLength = Math.max(maxSteamidLength, data.steamid.length);
-                    maxJoinTimestamp = Math.max(maxJoinTimestamp, timeString.length);
-                    maxStatus        = Math.max(maxStatus, currentStatus.length);
+					maxNameLength    = Math.max(maxNameLength, data.name.length);
+					maxSteamidLength = Math.max(maxSteamidLength, data.steamid.length);
+					maxJoinTimestamp = Math.max(maxJoinTimestamp, timeString.length);
+					maxStatus        = Math.max(maxStatus, currentStatus.length);
 
-                    rows.push([data.name, data.steamid, timeString, currentStatus]);
-                }
+					rows.push([data.name, data.steamid, timeString, currentStatus]);
+				}
 
-                let linesOfText = [
-                    `| ${name + ' '.repeat(maxNameLength - name.length)} | ${steamid + ' '.repeat(maxSteamidLength - steamid.length)} | ${joined + ' '.repeat(maxJoinTimestamp - joined.length)} | ${status + ' '.repeat(maxStatus - status.length)} |`,
-                    `|${'-'.repeat(maxNameLength + 2)}|${'-'.repeat(maxSteamidLength + 2)}|${'-'.repeat(maxJoinTimestamp + 2)}|${'-'.repeat(maxStatus + 2)}|`
-                ];
+				let linesOfText = [
+					`| ${name + ' '.repeat(maxNameLength - name.length)} | ${steamid + ' '.repeat(maxSteamidLength - steamid.length)} | ${joined + ' '.repeat(maxJoinTimestamp - joined.length)} | ${status + ' '.repeat(maxStatus - status.length)} |`,
+					`|${'-'.repeat(maxNameLength + 2)}|${'-'.repeat(maxSteamidLength + 2)}|${'-'.repeat(maxJoinTimestamp + 2)}|${'-'.repeat(maxStatus + 2)}|`
+				];
 
-                for (let i = 0; i < rows.length; i++) {
-                    let row = rows[i];
-                    linesOfText.push(`| ${row[0] + ' '.repeat(maxNameLength - row[0].length)} | ${row[1] + ' '.repeat(maxSteamidLength - row[1].length)} | ${row[2] + ' '.repeat(maxJoinTimestamp - row[2].length)} | ${row[3] + ' '.repeat(maxStatus - row[3].length)} |`);
-                }
+				for (let i = 0; i < rows.length; i++) {
+					let row = rows[i];
+					linesOfText.push(`| ${row[0] + ' '.repeat(maxNameLength - row[0].length)} | ${row[1] + ' '.repeat(maxSteamidLength - row[1].length)} | ${row[2] + ' '.repeat(maxJoinTimestamp - row[2].length)} | ${row[3] + ' '.repeat(maxStatus - row[3].length)} |`);
+				}
 
-                replyInteraction.editReply(`**${packet.players.length}** ${packet.players.length == 1 ? 'person is' : 'people are'} playing on map **${packet.map}**\`\`\`\n${linesOfText.join('\n')}\`\`\``).then(() => replyInteraction = undefined);
-            } break;
+				let serverText = `**${packet.hostname}**\n**${packet.players.length}** ${packet.players.length == 1 ? 'person is' : 'people are'} playing on map **${packet.map}**\`\`\`\n${linesOfText.join('\n')}\`\`\``;
+				
+				if (statuscount < relaySockets.length) {
+					statustext = statustext ? statustext + '\n\n' + serverText : serverText;
+					statuscount++;
+				} else {
+					replyInteraction.editReply((statustext ? statustext + '\n\n' : '') + serverText).then(() => replyInteraction = undefined);
+				}
+			} break;
+
+
+			
+			case "init": {
+				if (packet.id.length > 0) {
+					ws.id = packet.id
+					console.log(ws.id)
+				};
+			} break;
         }
     }
 
@@ -314,8 +330,8 @@ function getWebhook(json) {
 
 // Websocket server stuff
 let webhook;
+let relaySockets = []; // Array to hold multiple WebSocket connections
 
-let relaySocket;
 wss.shouldHandle = req => {
     let ip = req.socket.remoteAddress;
     if (ip === "127.0.0.1") 
@@ -329,7 +345,7 @@ wss.shouldHandle = req => {
 };
 
 wss.on('connection', async ws => {
-    relaySocket = ws;
+    relaySockets.push(ws); // Add new connection to the array
 
     if (webhook) {
         webhook.send({
@@ -338,9 +354,7 @@ wss.on('connection', async ws => {
         });
     }
 
-    relaySocket.on('message', buf => {
-        // console.log('Message received from Websocket connection to server.');
-        
+    ws.on('message', buf => {
         let json;
         try {
             json = JSON.parse(buf.toString());
@@ -351,31 +365,36 @@ wss.on('connection', async ws => {
         if (!webhook) {
             getWebhook(json);
         } else {
-            if (json instanceof Array) { // From a queue of message from a lost connection
+            if (json instanceof Array) { // From a queue of messages from a lost connection
                 for (let i = 0; i < json.length; i++) {
                     queue.push(json[i]);
                 }
-                sendQueue();
+                sendQueue(ws);
             } else if (json instanceof Object) {
                 queue.push(json);
-                sendQueue();
+                sendQueue(ws);
             }
         }
     });
 
-    relaySocket.on('error', error => {
-        console.log("Error occured in relay socket")
+    ws.on('error', error => {
+        console.log("Error occurred in relay socket");
         console.error(error);
 
         if (webhook) {
             webhook.send({
                 username: "Error Reporting",
-                content: `Error occured in the relay socket:\`\`\`\n${error.stack}\`\`\``
+                content: `Error occurred in the relay socket:\`\`\`\n${error.stack}\`\`\``
             });
         }
     });
-    relaySocket.on('close', () => {
+
+    ws.on('close', () => {
         console.log("Connection to server closed.");
+
+        // Remove the closed socket from the array
+        relaySockets = relaySockets.filter(socket => socket !== ws);
+
         if (webhook) {
             webhook.send({
                 username: "Websocket Status",
@@ -386,17 +405,18 @@ wss.on('connection', async ws => {
 });
 
 wss.on('error', async err => {
-    console.log('Error occured in websocket server:');
+    console.log('Error occurred in websocket server:');
     console.error(err);
 
     if (webhook) {
         await webhook.send({
             username: "Error Reporting",
-            content: `Error occured in websocket server:\`\`\`\n${err.stack}\`\`\`Restarting...`
+            content: `Error occurred in websocket server:\`\`\`\n${err.stack}\`\`\`Restarting...`
         });
     }
     process.exit();
 });
+
 wss.on('close', async () => {
     console.log("Websocket server closed. What the..");
     if (webhook) {
@@ -408,7 +428,6 @@ wss.on('close', async () => {
     process.exit();
 });
 
-
 // Functions for eval (js)
 
 // Hides certain config values to prevent exposing private keys
@@ -418,8 +437,6 @@ function sanitizePrivateValues(str) {
         newString = newString.replaceAll(config.SteamAPIKey, "[Steam API Key Hidden]");
     if (webhookData.Webhook.Token.length > 0) 
         newString = newString.replaceAll(webhookData.Webhook.Token, "[Webhook Token Hidden]");
-    // Don't need to hide config.ServerIP here since that's publicly known. Anyone who's ever
-    // connected to your server already has your ServerIP
     
     return newString;
 }
@@ -467,16 +484,18 @@ client.on('messageCreate', async message => {
             case "concommand":
             case "c":
             case "command": {
-                if (relaySocket?.readyState == 1) {
-                    let packet = {};
-                    packet.type = "concommand";
-                    packet.from = message.member.displayName;
-                    packet.command = inputText;
-                    relaySocket.send(Buffer.from(JSON.stringify(packet)));
-                    message.react('✅');
-                } else {
-                    message.react('❌');
-                }
+                // Send command to all relay sockets
+                relaySockets.forEach(socket => {
+                    if (socket.readyState === 1) {
+                        let packet = {
+                            type: "concommand",
+                            from: message.member.displayName,
+                            command: inputText
+                        };
+                        socket.send(Buffer.from(JSON.stringify(packet)));
+                    }
+                });
+                message.react('✅');
             } break;
 
             case "eval":
@@ -513,7 +532,7 @@ client.on('messageCreate', async message => {
                     message.reply(newMessageObject);
                 } catch (error) {
                     let newMessageObject = {
-                        content: `An error occured while evaluating that code.\`\`\`\n${sanitizePrivateValues(error.stack)}\`\`\``
+                        content: `An error occurred while evaluating that code.\`\`\`\n${sanitizePrivateValues(error.stack)}\`\`\``
                     };
                     if (temporaryLogs.length > 0) {
                         newMessageObject.files = [{attachment: Buffer.from(temporaryLogs.join('\n')), name: "console.txt"}];
@@ -530,18 +549,19 @@ client.on('messageCreate', async message => {
 
     if (ranCommand) return;
     if (message.channel.id !== webhookData.ChannelID || message.system) return;
-    if (relaySocket?.readyState !== 1) return message.react('⚠️'); // 1 means open, we can communicate to the server
+    if (relaySockets.length === 0 || !relaySockets.some(socket => socket.readyState === 1)) return message.react('⚠️');
 
     if (message.cleanContent.length > config.MaxMessageLength) return message.react('❌');
 
     let lines = message.content.split('\n');
     if (lines.length > config.LineBreakLimit) return message.react('❌');
     
-    let packet = {};
-    packet.type = "message";
-    packet.color = message.member.displayHexColor;
-    packet.author = message.member.displayName;
-    packet.content = message.cleanContent || "[attachment]";
+    let packet = {
+        type: "message",
+        color: message.member.displayHexColor,
+        author: message.member.displayName,
+        content: message.cleanContent || "[attachment]"
+    };
 
     if (message.reference) {
         try {
@@ -573,29 +593,53 @@ client.on('messageCreate', async message => {
         } finally {}
     }
 
-    relaySocket.send(Buffer.from(JSON.stringify(packet)));
+    relaySockets.forEach(socket => {
+        if (socket.readyState === 1) {
+            socket.send(Buffer.from(JSON.stringify(packet)));
+        }
+    });
 });
+
+var statustext = ""
+var statuscount = 1
 
 client.on('interactionCreate', interaction => {
     if (interaction.isCommand() && interaction.commandName === "status") {
-        if (relaySocket?.readyState !== 1) 
+        if (relaySockets.length === 0 || !relaySockets.some(socket => socket.readyState === 1)) 
             return interaction.reply('There is currently no connection to the server. Unable to request status.\nThe server automatically reconnects when an event happens, such as a player joining/leaving, or sending a message on the server.');
 
         interaction.reply('Requesting server status...').then(() => {
-            if (relaySocket?.readyState !== 1) return interaction.editReply('Websocket is not connected.');
+            if (relaySockets.length === 0 || !relaySockets.some(socket => socket.readyState === 1)) 
+                return interaction.editReply('Websocket is not connected.');
 
             replyInteraction = interaction;
-
-            let packet = {};
-            packet.type = "status";
-            packet.from = interaction.member.displayName;
-            packet.color = interaction.member.displayHexColor;
-
-            relaySocket.send(Buffer.from(JSON.stringify(packet)));
-
-            statusTimeout = setTimeout(() => {
-                replyInteraction?.editReply("No response received from the server, however it is connected. The server may be hibernating, which occurs when no players are on the server.\nThe server could also not be responding, too much lag may be timing out the server.");
-            }, 5000);
+            let packet = {
+                type: "status",
+                from: interaction.member.displayName,
+                color: interaction.member.displayHexColor,
+            };
+			
+			statustext = ""
+		    statuscount = 1
+			
+			
+            relaySockets.forEach(socket => {
+                if (socket.readyState === 1) {
+                    socket.send(Buffer.from(JSON.stringify(packet)));
+                }
+				
+				statusTimeout[socket.id] = setTimeout(() => {
+					if(statustext == ""){
+						replyInteraction?.editReply("**" +socket.id + "**" + " Server is empty or unreachable.");
+						statustext = "**" +socket.id + "**" + " Server is empty or unreachable."
+					}else{
+						replyInteraction?.editReply(statustext + "\n\n" + "**" +socket.id + "**" + " Server is empty or unreachable.");
+					};
+					clearTimeout(statusTimeout[socket.id])
+				}, 500);
+				
+            });
+		    
         });
     }
 });

@@ -76,6 +76,14 @@ function connectToWebsocket()
             end
 
             MsgN("Connection established to websocket server.")
+			
+			local response = {}
+				
+			response.type = "init"
+			response.id = ndc.ServerID
+
+            ndc.websocket:Send(util.TableToJSON(response))
+			
         end)
 
         ndc.websocket:on("message", function(data)
@@ -84,6 +92,9 @@ function connectToWebsocket()
             local typeofRequest = packet.type
 
             if typeofRequest == "status" then 
+				
+				
+				
                 local connecting = {}
                 for id, data in pairs(ndc.connectingPlayers) do 
                     table.insert(connecting, data)
@@ -95,19 +106,20 @@ function connectToWebsocket()
                         name     = ply:Nick(), 
                         steamid  = ply:SteamID(), 
                         jointime = ply:TimeConnected(), 
-                        afktime  = ndc.afkPlayers[ply:SteamID()] or false
+                        afktime  = ply.IsAfk or ndc.afkPlayers[ply:SteamID()] or false
                     })
                 end
 
-                local response = {}
-                response.type = "status"
-                response.map = game.GetMap()
-                response.connectingPlayers = connecting
-                response.players = spawnedPlayers
+				local response = {}
+				
+				response.type = "status"
+				response.map = game.GetMap()
+				response.connectingPlayers = connecting
+				response.players = spawnedPlayers
+				response.hostname = GetHostName()
 
                 ndc.websocket:Send(util.TableToJSON(response))
-                notify(Color(88, 101, 242), "(Discord) ", hexToCol(packet.color), packet.from, Color(255, 255, 255), " has requested server status.")
-            elseif typeofRequest == "concommand" then 
+                notify(Color(88, 101, 242), "(Discord) ", hexToCol(packet.color), packet.from, Color(255, 255, 255), " has requested server status.")            elseif typeofRequest == "concommand" then 
                 MsgN("Received console command from " .. packet.from .. " on Discord...")
                 MsgN("> " .. packet.command)
                 game.ConsoleCommand(packet.command .. "\n")
@@ -158,27 +170,37 @@ function connectToWebsocket()
     end
 end
 
-hook.Add("PlayerSay", "nubs_discord_communicator", function(ply, message)
-    for i, prefix in ipairs(ndc.HiddenMessageStarts) do 
-        if string.StartsWith(message, prefix) then return end
-    end
+gameevent.Listen( "player_say" )
+hook.Add("player_say", "nubs_discord_communicator", function(data)
+	local message = data.text
+	local ply = Player(data.userid)
 
-    if WS ~= nil then 
-        local packet = {}
-        packet.type = "message"
-        packet.from = ply:Nick()
-        packet.fromSteamID = ply:SteamID64()
-        packet.content = message
+	for i, prefix in ipairs(ndc.HiddenMessageStarts) do 
+		if string.StartsWith(message, prefix) then return end
+	end
 
-        if ndc.websocket == nil or (ndc.websocket ~= nil and not ndc.websocket:IsActive()) then 
-            connectToWebsocket()
-            table.insert(ndc.queue, packet)
-        elseif ndc.websocket ~= nil and ndc.websocket:IsActive() then 
-            ndc.websocket:Send(util.TableToJSON(packet))
-        end
-    else 
-        MsgN("Discord communication inactive - missing required mod Gmod Websockets.")
-    end
+	if WS ~= nil then 
+		local packet = {}
+		packet.type = "message"
+		if IsValid(ply) then
+			packet.from = ply:Nick()
+			packet.fromSteamID = ply:SteamID64()
+		else
+			packet.from = "Console"
+			packet.fromSteamID = "0"
+		end
+		packet.content = message
+		packet.gamemode = engine.ActiveGamemode()
+
+		if ndc.websocket == nil or (ndc.websocket ~= nil and not ndc.websocket:IsActive()) then 
+			connectToWebsocket()
+			table.insert(ndc.queue, packet)
+		elseif ndc.websocket ~= nil and ndc.websocket:IsActive() then 
+			ndc.websocket:Send(util.TableToJSON(packet))
+		end
+	else 
+		MsgN("Discord communication inactive - missing required mod Gmod Websockets.")
+	end
 end)
 
 gameevent.Listen("player_connect")
