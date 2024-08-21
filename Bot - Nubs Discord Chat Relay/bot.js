@@ -19,8 +19,88 @@ const { Client, GatewayIntentBits, User, GuildMember } = require('discord.js');
 // At the time of making this, I'm running axios version 1.4.0
 const { get } = require('axios');
 
+const Rcon = require("rcon");
+
 let config = require("./config.js");
 let webhookData = JSON.parse(readFileSync("./ids.json"));
+
+function parseStatusData(input) {
+    const lines = input.trim().split('\n');
+    let hostname = '';
+    let map = '';
+    let playersInfo = [];
+    let activePlayers = [];
+    let spawningPlayers = [];
+
+    lines.forEach(line => {
+        if (line.startsWith('hostname:')) {
+            hostname = line.split('hostname:')[1].trim();
+        } else if (line.startsWith('map')) {
+            // Correctly extract the map name
+            map = line.split('map     :')[1].trim().split(' ')[0];
+        } else if (line.startsWith('players')) {
+            playersInfo = line.split('players :')[1].trim().match(/\d+/g);
+        } else if (line.startsWith('#')) {
+            const playerInfo = line.trim().split(/\s+/);
+            const name = playerInfo.slice(2, playerInfo.length - 5).join(' ').replace(/"/g, '');
+            const steamID = playerInfo[playerInfo.length - 5];
+            const timeConnected = playerInfo[playerInfo.length - 4];
+            const status = playerInfo[playerInfo.length - 1];
+            const playerData = [name, steamID, timeConnected, status];
+
+            if (status === 'active') {
+                activePlayers.push(playerData);
+            } else if (status === 'spawning') {
+                spawningPlayers.push(playerData);
+            }
+        }
+    });
+
+    const numPlayers = playersInfo ? parseInt(playersInfo[0], 10) : 0;
+
+    return {
+        hostname,
+        map,
+        numPlayers,
+        activePlayers,
+        spawningPlayers
+    };
+}
+
+
+function sendCommand(command, id) {
+	console.log(id)
+    return new Promise((resolve, reject) => {
+        const rcon = new Rcon(config.ServerRcons[id].ip, config.ServerRcons[id].port, config.ServerRcons[id].password);
+
+        let fullResponse = '';
+
+        rcon.on('auth', () => {
+            rcon.send(command);
+        });
+
+        rcon.on('response', (response) => {
+            fullResponse += response;
+			setTimeout(() => {
+				rcon.disconnect();
+			}, 500);
+        });
+
+        rcon.on('end', () => {
+            if (fullResponse) {
+                resolve(fullResponse); 
+            } else {
+                reject(new Error('No response received from server'));
+            }
+        });
+
+        rcon.on('error', (err) => {
+            reject(err);
+        });
+
+        rcon.connect();
+    });
+}
 
 // Constants
 const wss = new WebSocketServer({host: '0.0.0.0', port: config.PortNumber}); // We set the host to '0.0.0.0' to tell the server we want to run IPv4 instead of IPv6
@@ -85,7 +165,7 @@ function saveIds() {
 // getSteamAvatar checks the avatar cache and refreshes them when needed.
 let avatarCache = {};
 async function getSteamAvatar(id) {
-    if (config.SteamAPIKey.length === 0) // If there is no API key specified, they must not want avatars.
+    if (config.SteamAPIKey.length === 0  || id == 0) // If there is no API key specified, they must not want avatars.
         return;
 
     let needsRefresh = false;
@@ -248,7 +328,9 @@ async function sendQueue(ws) {
 					linesOfText.push(`| ${row[0] + ' '.repeat(maxNameLength - row[0].length)} | ${row[1] + ' '.repeat(maxSteamidLength - row[1].length)} | ${row[2] + ' '.repeat(maxJoinTimestamp - row[2].length)} | ${row[3] + ' '.repeat(maxStatus - row[3].length)} |`);
 				}
 
-				let serverText = `**${packet.hostname}**\n**${packet.players.length}** ${packet.players.length == 1 ? 'person is' : 'people are'} playing on map **${packet.map}**\`\`\`\n${linesOfText.join('\n')}\`\`\``;
+				const numplayers = packet.players.length +  packet.connectingPlayers.length
+
+				let serverText = `**${packet.hostname}**\n**${numplayers}** ${numplayers == 1 ? 'person is' : 'people are'} playing on map **${packet.map}**\`\`\`\n${linesOfText.join('\n')}\`\`\``;
 				
 				if (statuscount < relaySockets.length) {
 					statustext = statustext ? statustext + '\n\n' + serverText : serverText;
@@ -617,6 +699,7 @@ client.on('interactionCreate', interaction => {
                 type: "status",
                 from: interaction.member.displayName,
                 color: interaction.member.displayHexColor,
+				time: Math.floor(Date.now() / 1000),
             };
 			
 			statustext = ""
@@ -629,14 +712,89 @@ client.on('interactionCreate', interaction => {
                 }
 				
 				statusTimeout[socket.id] = setTimeout(() => {
-					if(statustext == ""){
-						replyInteraction?.editReply("**" +socket.id + "**" + " Server is empty or unreachable.");
-						statustext = "**" +socket.id + "**" + " Server is empty or unreachable."
-					}else{
-						replyInteraction?.editReply(statustext + "\n\n" + "**" +socket.id + "**" + " Server is empty or unreachable.");
-					};
+
+					sendCommand('status',socket.id)
+						.then(response => {
+							
+							
+							const statustable = parseStatusData(response);
+							
+							let [name, steamid, joined, status] = ['Name', 'Steam ID', 'Time Connected', "Status"];
+
+							let maxNameLength    = name.length;
+							let maxSteamidLength = steamid.length;
+							let maxJoinTimestamp = joined.length;
+							let maxStatus        = status.length;
+
+							let rows = [];
+
+							let now = Math.round(Date.now() / 1000);
+							for (let i = 0; i < statustable.spawningPlayers.length; i++) {
+								let data = statustable.spawningPlayers[i];
+
+								let timeString = data.timeConnected;
+
+								let currentStatus = "Connecting";
+								maxNameLength    = Math.max(maxNameLength, data[0].length);
+								maxSteamidLength = Math.max(maxSteamidLength, data[1].length);
+								maxJoinTimestamp = Math.max(maxJoinTimestamp, timeString.length);
+								maxStatus        = Math.max(maxStatus, currentStatus.length);
+
+								rows.push([data[0], data[1], timeString, currentStatus]);
+							}
+
+							for (let i = 0; i < statustable.activePlayers.length; i++) {
+								let data = statustable.activePlayers[i];
+
+								if (data.name == undefined) data.name = "[no name received?]";
+								if (data.steamid == undefined) data.steamid = "[no steamid received?]";
+
+								let timeString = statustable.activePlayers.timeConnected;
+
+								let currentStatus = "Active";
+
+								maxNameLength    = Math.max(maxNameLength, data[0].length);
+								maxSteamidLength = Math.max(maxSteamidLength, data[1].length);
+								maxJoinTimestamp = Math.max(maxJoinTimestamp, timeString.length);
+								maxStatus        = Math.max(maxStatus, currentStatus.length);
+
+								rows.push([data[0], data[1], timeString, currentStatus]);
+							}
+
+							let linesOfText = [
+								`| ${name + ' '.repeat(maxNameLength - name.length)} | ${steamid + ' '.repeat(maxSteamidLength - steamid.length)} | ${joined + ' '.repeat(maxJoinTimestamp - joined.length)} | ${status + ' '.repeat(maxStatus - status.length)} |`,
+								`|${'-'.repeat(maxNameLength + 2)}|${'-'.repeat(maxSteamidLength + 2)}|${'-'.repeat(maxJoinTimestamp + 2)}|${'-'.repeat(maxStatus + 2)}|`
+							];
+
+							for (let i = 0; i < rows.length; i++) {
+								let row = rows[i];
+								linesOfText.push(`| ${row[0] + ' '.repeat(maxNameLength - row[0].length)} | ${row[1] + ' '.repeat(maxSteamidLength - row[1].length)} | ${row[2] + ' '.repeat(maxJoinTimestamp - row[2].length)} | ${row[3] + ' '.repeat(maxStatus - row[3].length)} |`);
+							}
+
+							const numplayers = statustable.numPlayers;
+
+							let serverText = `**${statustable.hostname}**\n**${numplayers}** ${numplayers == 1 ? 'person is' : 'people are'} playing on map **${statustable.map}**\`\`\`\n${linesOfText.join('\n')}\`\`\``;
+							
+										
+							if(statustext == ""){
+								replyInteraction?.editReply(serverText);
+								statustext = serverText;
+								statuscount++;
+							}else{
+								replyInteraction?.editReply(statustext + '\n\n' + serverText);
+							};
+						})
+						.catch(err => {
+							if(statustext == ""){
+								replyInteraction?.editReply("**" +socket.id + "**" + " Server is empty or unreachable.");
+								statustext = "**" +socket.id + "**" + " Server is empty or unreachable.";
+								statuscount++;
+							}else{
+								replyInteraction?.editReply(statustext + "\n\n" + "**" +socket.id + "**" + " Server is empty or unreachable.");
+							};
+						});
 					clearTimeout(statusTimeout[socket.id])
-				}, 500);
+				}, 700);
 				
             });
 		    
