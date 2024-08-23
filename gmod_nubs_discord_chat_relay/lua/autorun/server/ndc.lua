@@ -87,12 +87,15 @@ function connectToWebsocket()
         end)
 
         ndc.websocket:on("message", function(data)
+			if not ndc.websocket.connected then return end
+		
             local packet = util.JSONToTable(data)
 
             local typeofRequest = packet.type
 
             if typeofRequest == "status" then 
 				
+				if packet.time + 3 < os.time() then return end
 				
 				
                 local connecting = {}
@@ -106,7 +109,7 @@ function connectToWebsocket()
                         name     = ply:Nick(), 
                         steamid  = ply:SteamID(), 
                         jointime = ply:TimeConnected(), 
-                        afktime  = ply.IsAfk or ndc.afkPlayers[ply:SteamID()] or false
+                        afktime  = false
                     })
                 end
 
@@ -117,13 +120,21 @@ function connectToWebsocket()
 				response.connectingPlayers = connecting
 				response.players = spawnedPlayers
 				response.hostname = GetHostName()
+				response.format = packet.format
 
                 ndc.websocket:Send(util.TableToJSON(response))
-                notify(Color(88, 101, 242), "(Discord) ", hexToCol(packet.color), packet.from, Color(255, 255, 255), " has requested server status.")            elseif typeofRequest == "concommand" then 
-                MsgN("Received console command from " .. packet.from .. " on Discord...")
-                MsgN("> " .. packet.command)
-                game.ConsoleCommand(packet.command .. "\n")
+				if ndc.StatusNotify then
+					notify(Color(88, 101, 242), "(Discord) ", hexToCol(packet.color), packet.from, Color(255, 255, 255), " has requested server status.")            elseif typeofRequest == "concommand" then 
+                end
+				MsgN("Received console command from " .. packet.from .. " on Discord...")
+				if packet.command then
+					MsgN("> " .. packet.command)
+					game.ConsoleCommand(packet.command .. "\n")
+				end
             elseif typeofRequest == "message" then
+				
+				if packet.time + 3 < os.time() then return end
+			
                 local message = {Color(88, 101, 242), "(Discord) ", hexToCol(packet.color), packet.author, Color(255, 255, 255)}
 
                 if packet.replyingTo then 
@@ -185,9 +196,11 @@ hook.Add("player_say", "nubs_discord_communicator", function(data)
 		if IsValid(ply) then
 			packet.from = ply:Nick()
 			packet.fromSteamID = ply:SteamID64()
+			packet.id = ndc.ServerID
 		else
 			packet.from = "Console"
 			packet.fromSteamID = "0"
+			packet.id = ndc.ServerID
 		end
 		packet.content = message
 		packet.gamemode = engine.ActiveGamemode()
@@ -211,6 +224,7 @@ hook.Add("player_connect", "discord_comms_join", function(ply)
         packet.messagetype = 1 -- 1 = join, 2 = first spawn, 3 = leave
         packet.username = ply.name
         packet.usersteamid = ply.networkid
+		packet.id = ndc.ServerID
 
         if ndc.websocket == nil or (ndc.websocket ~= nil and not ndc.websocket:IsActive()) then 
             connectToWebsocket()
@@ -234,6 +248,7 @@ hook.Add("PlayerInitialSpawn", "discord_comms_spawn", function(ply)
         packet.username = ply:Nick()
         packet.usersteamid = ply:SteamID()
         packet.userjointime = ndc.playerJoinTimestamps[ply:SteamID()] or 0
+		packet.id = ndc.ServerID
 
         if ndc.websocket == nil or (ndc.websocket ~= nil and not ndc.websocket:IsActive()) then 
             connectToWebsocket()
@@ -257,6 +272,7 @@ hook.Add("player_disconnect", "ndc_comms_disconnect", function(ply)
         packet.username = ply.name
         packet.usersteamid = ply.networkid
         packet.reason = ply.reason
+		packet.id = ndc.ServerID
 
         if ndc.websocket == nil or (ndc.websocket ~= nil and not ndc.websocket:IsActive()) then 
             connectToWebsocket()
@@ -281,26 +297,5 @@ end)
 hook.Add("ShutDown", "discord_comms_disconnect", function() 
     if WS ~= nil and ndc.websocket ~= nil and ndc.websocket:IsActive() then 
         ndc.websocket:Close()
-    end
-end)
-
-local lastCheckedAFK = 0
-hook.Add("Think", "ndc_afk_detection", function() 
-    local now = os.time()
-    if now - lastCheckedAFK >= ndc.AFKCheckInterval then 
-        lastCheckedAFK = now
-        for i, ply in ipairs(player.GetHumans()) do
-            local eyeAngles = ply:EyeAngles()
-            if eyeAngles ~= ply.ndc_EyeAngleCached then 
-                ply.ndc_EyeAngleCached = eyeAngles
-                ply.ndc_LastCached = now
-
-                ndc.afkPlayers[ply:SteamID()] = nil
-            end
-
-            if (not ndc.afkPlayers[ply:SteamID()]) and now - ply.ndc_LastCached >= ndc.AFKTimeout then
-                ndc.afkPlayers[ply:SteamID()] = now - ndc.AFKTimeout
-            end
-        end
     end
 end)

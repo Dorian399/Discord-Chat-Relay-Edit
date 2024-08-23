@@ -69,7 +69,6 @@ function parseStatusData(input) {
 
 
 function sendCommand(command, id) {
-	console.log(id)
     return new Promise((resolve, reject) => {
         const rcon = new Rcon(config.ServerRcons[id].ip, config.ServerRcons[id].port, config.ServerRcons[id].password);
 
@@ -152,11 +151,29 @@ function logConnection(ip, status) {
 }
 
 // assignWebhook takes a webhook object and stores it for later
-function assignWebhook(wh) {
-    webhook = wh; 
-    webhookData.Webhook.ID = webhook.id;
-    webhookData.Webhook.Token = webhook.token;
+function assignWebhook(wh, id) {
+	
+    if (typeof webhook === 'undefined') {
+        webhook = {}; // Ensure that webhook is initialized.
+    }
+    webhook[id] = wh; 
+	
+	if (!webhookData.Webhook) {
+        webhookData.Webhook = {};
+    }
+
+    // Initialize webhookData.Webhook[id] if it does not exist
+    if (!webhookData.Webhook[id]) {
+        webhookData.Webhook[id] = {};
+    }
+
+    // Assign ID and Token from the `wh` object
+    webhookData.Webhook[id].ID = wh.id;
+    webhookData.Webhook[id].Token = wh.token;
+	
+	
 }
+
 
 function saveIds() {
     writeFile("./ids.json", JSON.stringify(webhookData, null, 4), err => {if (err) console.error(err);});
@@ -211,7 +228,8 @@ async function sendQueue(ws) {
                     if (avatarCache[packet.fromSteamID]) 
                         opts.avatarURL = avatarCache[packet.fromSteamID].avatar;
                     
-                    await webhook.send(opts);
+					
+                    await webhook[packet.id].send(opts);
                 }
             } break;
 
@@ -243,109 +261,122 @@ async function sendQueue(ws) {
                     } break;
                 }
 
-                await webhook.send(options);
+                await webhook[packet.id].send(options);
             } break;
 
             case "status": {
 				if (!replyInteraction) return;
-				if (statusTimeout){
+				if (statusTimeout) {
 					clearTimeout(statusTimeout[ws.id]);
-				};
+				}
 
-				let [name, steamid, joined, status] = ['Name', 'Steam ID', 'Time Connected', "Status"];
-
-				let maxNameLength    = name.length;
-				let maxSteamidLength = steamid.length;
-				let maxJoinTimestamp = joined.length;
-				let maxStatus        = status.length;
+				const format = packet.format; // Get the format from the packet
 
 				let rows = [];
+				const now = Math.round(Date.now() / 1000);
 
-				let now = Math.round(Date.now() / 1000);
+				// Function to format the time
+				function formatTime(timeOnServer) {
+					let hours = Math.floor(timeOnServer / 60 / 60);
+					let minutes = Math.floor(timeOnServer / 60) % 60;
+					let seconds = timeOnServer % 60;
+					return `${hours}:${minutes < 10 ? `0${minutes}` : minutes}:${seconds < 10 ? `0${seconds}` : seconds}`;
+				}
+
+				// Process connecting players
 				for (let i = 0; i < packet.connectingPlayers.length; i++) {
 					let data = packet.connectingPlayers[i];
-
-					let timeString = 'Unknown';
-					if (data[2]) {
-						let timeOnServer = now - data[2];
-						let hours = Math.floor(timeOnServer / 60 / 60);
-						let minutes = Math.floor(timeOnServer / 60) % 60;
-						let seconds = timeOnServer % 60;
-
-						timeString = `${hours}:${minutes < 10 ? `0${minutes}` : minutes}:${seconds < 10 ? `0${seconds}` : seconds}`;
-					}
-
+					let timeString = data[2] ? formatTime(now - data[2]) : 'Unknown';
 					let currentStatus = "Connecting";
-					maxNameLength    = Math.max(maxNameLength, data[0].length);
-					maxSteamidLength = Math.max(maxSteamidLength, data[1].length);
-					maxJoinTimestamp = Math.max(maxJoinTimestamp, timeString.length);
-					maxStatus        = Math.max(maxStatus, currentStatus.length);
-
 					rows.push([data[0], data[1], timeString, currentStatus]);
 				}
 
+				// Process active players
 				for (let i = 0; i < packet.players.length; i++) {
 					let data = packet.players[i];
-
 					if (data.name == undefined) data.name = "[no name received?]";
 					if (data.steamid == undefined) data.steamid = "[no steamid received?]";
 
-					let timeString = 'Unknown';
-					if (data.jointime) {
-						let timeOnServer = Math.round(data.jointime);
-						let hours = Math.floor(timeOnServer / 60 / 60);
-						let minutes = Math.floor(timeOnServer / 60) % 60;
-						let seconds = timeOnServer % 60;
-
-						timeString = `${hours}:${minutes < 10 ? `0${minutes}` : minutes}:${seconds < 10 ? `0${seconds}` : seconds}`;
-					}
-
+					let timeString = data.jointime ? formatTime(Math.round(data.jointime)) : 'Unknown';
 					let currentStatus = "Active";
 					if (data.afktime) {
 						let timeAFK = now - data.afktime;
-						let hours = Math.floor(timeAFK / 60 / 60);
-						let minutes = Math.floor(timeAFK / 60) % 60;
-						let seconds = timeAFK % 60;
-
-						currentStatus = `AFK for ${hours}:${minutes < 10 ? `0${minutes}` : minutes}:${seconds < 10 ? `0${seconds}` : seconds}`;
+						currentStatus = `AFK for ${formatTime(timeAFK)}`;
 					}
-
-					maxNameLength    = Math.max(maxNameLength, data.name.length);
-					maxSteamidLength = Math.max(maxSteamidLength, data.steamid.length);
-					maxJoinTimestamp = Math.max(maxJoinTimestamp, timeString.length);
-					maxStatus        = Math.max(maxStatus, currentStatus.length);
-
 					rows.push([data.name, data.steamid, timeString, currentStatus]);
 				}
 
-				let linesOfText = [
-					`| ${name + ' '.repeat(maxNameLength - name.length)} | ${steamid + ' '.repeat(maxSteamidLength - steamid.length)} | ${joined + ' '.repeat(maxJoinTimestamp - joined.length)} | ${status + ' '.repeat(maxStatus - status.length)} |`,
-					`|${'-'.repeat(maxNameLength + 2)}|${'-'.repeat(maxSteamidLength + 2)}|${'-'.repeat(maxJoinTimestamp + 2)}|${'-'.repeat(maxStatus + 2)}|`
-				];
+				const numplayers = packet.players.length + packet.connectingPlayers.length;
 
-				for (let i = 0; i < rows.length; i++) {
-					let row = rows[i];
-					linesOfText.push(`| ${row[0] + ' '.repeat(maxNameLength - row[0].length)} | ${row[1] + ' '.repeat(maxSteamidLength - row[1].length)} | ${row[2] + ' '.repeat(maxJoinTimestamp - row[2].length)} | ${row[3] + ' '.repeat(maxStatus - row[3].length)} |`);
-				}
+				if (format === "ext") {
+					// Extended format (original code)
+					let [name, steamid, joined, status] = ['Name', 'Steam ID', 'Time Connected', "Status"];
 
-				const numplayers = packet.players.length +  packet.connectingPlayers.length
+					let maxNameLength = name.length;
+					let maxSteamidLength = steamid.length;
+					let maxJoinTimestamp = joined.length;
+					let maxStatus = status.length;
 
-				let serverText = `**${packet.hostname}**\n**${numplayers}** ${numplayers == 1 ? 'person is' : 'people are'} playing on map **${packet.map}**\`\`\`\n${linesOfText.join('\n')}\`\`\``;
+					// Calculate max lengths
+					for (let row of rows) {
+						maxNameLength = Math.max(maxNameLength, row[0].length);
+						maxSteamidLength = Math.max(maxSteamidLength, row[1].length);
+						maxJoinTimestamp = Math.max(maxJoinTimestamp, row[2].length);
+						maxStatus = Math.max(maxStatus, row[3].length);
+					}
+
+					let linesOfText = [
+						`| ${name.padEnd(maxNameLength)} | ${steamid.padEnd(maxSteamidLength)} | ${joined.padEnd(maxJoinTimestamp)} | ${status.padEnd(maxStatus)} |`,
+						`|${'-'.repeat(maxNameLength + 2)}|${'-'.repeat(maxSteamidLength + 2)}|${'-'.repeat(maxJoinTimestamp + 2)}|${'-'.repeat(maxStatus + 2)}|`
+					];
+
+					for (let row of rows) {
+						linesOfText.push(`| ${row[0].padEnd(maxNameLength)} | ${row[1].padEnd(maxSteamidLength)} | ${row[2].padEnd(maxJoinTimestamp)} | ${row[3].padEnd(maxStatus)} |`);
+					}
+
+					let serverText = `**${packet.hostname}**\n**${numplayers}** ${numplayers == 1 ? 'person is' : 'people are'} playing on map **${packet.map}**\`\`\`\n${linesOfText.join('\n')}\`\`\``;
+					
+					if (statuscount < relaySockets.length) {
+						statustext = statustext ? statustext + '\n\n' + serverText : serverText;
+						statuscount++;
+					} else {
+						replyInteraction.editReply((statustext ? statustext + '\n\n' : '') + serverText).then(() => replyInteraction = undefined);
+					}
+				} else if (format === "simple") {
 				
-				if (statuscount < relaySockets.length) {
-					statustext = statustext ? statustext + '\n\n' + serverText : serverText;
-					statuscount++;
-				} else {
-					replyInteraction.editReply((statustext ? statustext + '\n\n' : '') + serverText).then(() => replyInteraction = undefined);
+					let linesOfText;
+					let servertext;
+					
+					if(numplayers>0){ 
+						linesOfText = rows.map(row => `${row[0]} | ${row[2]} | ${row[3]}`) 
+						serverText =  `**${packet.hostname}**\n**${numplayers}** ${numplayers == 1 ? 'person is' : 'people are'} playing on map **${packet.map}**\`\`\`\n${linesOfText.join('\n')}\`\`\``;
+					}else{
+						serverText =  `**${packet.hostname}**\n**${numplayers}** ${numplayers == 1 ? 'person is' : 'people are'} playing on map **${packet.map}**`;
+					};
+
+					if (statuscount < relaySockets.length) {
+						statustext = statustext ? statustext + '\n\n' + serverText : serverText;
+						statuscount++;
+					} else {
+						replyInteraction.editReply((statustext ? statustext + '\n\n' : '') + serverText).then(() => replyInteraction = undefined);
+					}
 				}
 			} break;
+
 
 
 			
 			case "init": {
 				if (packet.id.length > 0) {
 					ws.id = packet.id
-					console.log(ws.id)
+					if(!config.HideWebsocketNotifs){
+						if (webhook && webhook[packet.id]) {
+							webhook[packet.id].send({
+								username: "Websocket Status",
+								content: "Connection to server established."
+							});
+						}
+					};
 				};
 			} break;
         }
@@ -357,18 +388,27 @@ async function sendQueue(ws) {
 }
 
 // getWebhook creates a webhook object if it can't find one that was stored.
-function getWebhook(json) {
+
+
+
+async function getWebhook(json) {
     if (!client.isReady()) 
         return;
 
-    client.fetchWebhook(webhookData.Webhook.ID, webhookData.Webhook.Token)
-        .then(wh => {
-            assignWebhook(wh);
-            if (json == true) {
+    if (!webhookData["channels"]) {
+        return console.log("Tried to create a webhook, but no channel has been set yet.");
+    }
+
+    for (const data in webhookData["channels"]) {
+        try {
+            const wh = await client.fetchWebhook(webhookData.Webhook[data].ID, webhookData.Webhook[data].Token);
+            assignWebhook(wh, data);
+
+            if (json === true) {
                 let webhookOptions = {
                     username: "Websocket Status",
                     content: "Bot started. "
-                }
+                };
 
                 if (existsSync('./error.txt')) {
                     webhookOptions.content += `Bot has just restarted from a crash:\`\`\`\n${readFileSync('./error.txt')}\`\`\``;
@@ -379,26 +419,35 @@ function getWebhook(json) {
                         }
                     });
                 }
-                
-                webhookOptions.content += "Awaiting server connection...";
-                wh.send(webhookOptions);
-            }
-        })
-        .catch(() => {
-            // Make a new webhook
-            if (webhookData.ChannelID.length === 0)
-                return console.log("Tried to create a webhook, but no channel has been set yet.");
 
-            let channel = client.channels.resolve(webhookData.ChannelID);
-            if (channel) {
-                channel.createWebhook({
-                    name: "Dickord Communication Relay"
-                }).then(wh => {assignWebhook(wh); saveIds();});
+                webhookOptions.content += "Awaiting server connection...";
+                await wh.send(webhookOptions);
             }
-        });
+        } catch (error) {
+            
+            if (webhookData.channels[data].ChannelID == 0) {
+                console.log("Tried to create a webhook, but no channel has been set yet.");
+                continue;
+            }
+
+
+            let channel = client.channels.resolve(webhookData["channels"][data].ChannelID);
+            if (channel) {
+                try {
+                    const wh = await channel.createWebhook({
+                        name: "Dickord Communication Relay"
+                    });
+                    assignWebhook(wh, data);
+                    saveIds();
+                } catch (creationError) {
+                    console.error(`Failed to create webhook for id: ${data}`, creationError);
+                }
+            }
+        }
+    }
 
     if (webhook && json) {
-        if (json instanceof Array) { // When the gmod server loses connection to the websocket, it stores them in an array and sends them all when connection is reestablished
+        if (Array.isArray(json)) { // When the gmod server loses connection to the websocket, it stores them in an array and sends them all when connection is reestablished
             for (let i = 0; i < json.length; i++) {
                 queue.push(json[i]);
             }
@@ -409,6 +458,7 @@ function getWebhook(json) {
         }
     }
 }
+
 
 // Websocket server stuff
 let webhook;
@@ -429,12 +479,7 @@ wss.shouldHandle = req => {
 wss.on('connection', async ws => {
     relaySockets.push(ws); // Add new connection to the array
 
-    if (webhook) {
-        webhook.send({
-            username: "Websocket Status",
-            content: "Connection to server established."
-        });
-    }
+
 
     ws.on('message', buf => {
         let json;
@@ -464,7 +509,7 @@ wss.on('connection', async ws => {
         console.error(error);
 
         if (webhook) {
-            webhook.send({
+            webhook[ws.id].send({
                 username: "Error Reporting",
                 content: `Error occurred in the relay socket:\`\`\`\n${error.stack}\`\`\``
             });
@@ -474,15 +519,17 @@ wss.on('connection', async ws => {
     ws.on('close', () => {
         console.log("Connection to server closed.");
 
-        // Remove the closed socket from the array
+		if(!config.HideWebsocketNotifs){
+			if (webhook) {
+				webhook[ws.id].send({
+					username: "Websocket Status",
+					content: "Connection to server closed. Awaiting reconnect..."
+				});
+			}
+		};
+		
+		// Remove the closed socket from the array
         relaySockets = relaySockets.filter(socket => socket !== ws);
-
-        if (webhook) {
-            webhook.send({
-                username: "Websocket Status",
-                content: "Connection to server closed. Awaiting reconnect..."
-            });
-        }
     });
 });
 
@@ -491,7 +538,7 @@ wss.on('error', async err => {
     console.error(err);
 
     if (webhook) {
-        await webhook.send({
+        await webhook[wss.id].send({
             username: "Error Reporting",
             content: `Error occurred in websocket server:\`\`\`\n${err.stack}\`\`\`Restarting...`
         });
@@ -502,7 +549,7 @@ wss.on('error', async err => {
 wss.on('close', async () => {
     console.log("Websocket server closed. What the..");
     if (webhook) {
-        await webhook.send({
+        await webhook[wss.id].send({
             username: "Error Reporting",
             content: "Websocket server closed for an unknown reason. Restarting..."
         });
@@ -514,11 +561,15 @@ wss.on('close', async () => {
 
 // Hides certain config values to prevent exposing private keys
 function sanitizePrivateValues(str) {
-    let newString = str.replaceAll(config.DiscordBotToken, "[Bot Token Hidden]");
-    if (config.SteamAPIKey.length > 0) 
-        newString = newString.replaceAll(config.SteamAPIKey, "[Steam API Key Hidden]");
-    if (webhookData.Webhook.Token.length > 0) 
-        newString = newString.replaceAll(webhookData.Webhook.Token, "[Webhook Token Hidden]");
+	let newString = str.replaceAll(config.DiscordBotToken, "[Hidden]");
+	for(id in webhookData.Webhook){
+		if (config.SteamAPIKey.length > 0) 
+			newString = newString.replaceAll(config.SteamAPIKey, "[Hidden]");
+		if (webhookData.Webhook[id].Token.length > 0) 
+			newString = newString.replaceAll(webhookData.Webhook[id].Token, "[Hidden]");
+		if (config.ServerRcons[id].password.length > 0)
+			newString = newString.replaceAll(config.ServerRcons[id].password, "[Hidden]");
+	};
     
     return newString;
 }
@@ -551,7 +602,14 @@ client.on('messageCreate', async message => {
         ranCommand = true;
         switch (command) {
             case "setgmodchannel": {
-                webhookData.ChannelID = message.channel.id;
+				let arg = inputText.split(' ', 1)[0];
+				if(!webhookData["channels"]) webhookData["channels"] = {};
+				if(!webhookData["channels"][arg]) webhookData["channels"][arg] = {};
+				if(!webhookData.Webhook) webhookData.Webhook = {};
+				if(!webhookData.Webhook[arg]) webhookData.Webhook[arg] = {};
+                webhookData["channels"][arg].ChannelID = message.channel.id;
+				webhookData.Webhook[arg].ID = message.channel.id;
+				webhookData.ChannelID = "set";
                 saveIds();
                 message.react('✅');
             } break;
@@ -568,21 +626,44 @@ client.on('messageCreate', async message => {
             case "command": {
                 // Send command to all relay sockets
                 relaySockets.forEach(socket => {
-                    if (socket.readyState === 1) {
-                        let packet = {
-                            type: "concommand",
-                            from: message.member.displayName,
-                            command: inputText
-                        };
-                        socket.send(Buffer.from(JSON.stringify(packet)));
-                    }
+					if(!webhookData["channels"] || !webhookData["channels"][socket.id]) return;
+					if (message.channel.id != webhookData["channels"][socket.id].ChannelID) return;
+					if(config.UseRconForCommands && config.ServerRcons[socket.id].password.length > 0){
+						sendCommand(inputText,socket.id)
+						.then(response => {
+							message.reply("Command executed successfully.\n```"+response+"```")
+							return;
+						})
+						.catch(err => {
+							if (socket.readyState === 1) {
+								let packet = {
+									type: "concommand",
+									from: message.member.displayName,
+									command: inputText
+								};
+								socket.send(Buffer.from(JSON.stringify(packet)));
+								message.react('✅');
+							}
+							return;
+						});
+					};
+					
+					if (socket.readyState === 1) {
+						let packet = {
+							type: "concommand",
+							from: message.member.displayName,
+							command: inputText
+						};
+						socket.send(Buffer.from(JSON.stringify(packet)));
+					}
+					message.react('✅');
                 });
-                message.react('✅');
             } break;
 
             case "eval":
             case "evaluate":
             case "js_run": {
+				if (!config.EvalEnable) return;
                 inputText = inputText.replace(/```(js)?/g, '');
                 if (inputText.length === 0) 
                     return message.reply('Invalid input. Please provide JavaScript code to run.');
@@ -598,7 +679,7 @@ client.on('messageCreate', async message => {
                         newMessageObject.files.push({attachment: Buffer.from(temporaryLogs.join('\n')), name: "console.txt"});
                     }
 
-                    if (result === undefined || result === null) newMessageObject.content = "Evaluated successfully, no output.";
+                    if (result === undefined || result === null) newMessageObject.content = "Evaluated successfully.";
                     else if (result instanceof Object || result instanceof Array) result = JSON.stringify(result, null, 2);
                     else if (typeof result !== "string") result = result !== undefined ? result.toString() : "";
 
@@ -616,6 +697,11 @@ client.on('messageCreate', async message => {
                     let newMessageObject = {
                         content: `An error occurred while evaluating that code.\`\`\`\n${sanitizePrivateValues(error.stack)}\`\`\``
                     };
+					if(!config.ShowEvalErrors){
+						newMessageObject = {
+							content: `An error occurred while evaluating that code.\`\`\`\n${sanitizePrivateValues(error.stack)}\`\`\``
+						};
+					};
                     if (temporaryLogs.length > 0) {
                         newMessageObject.files = [{attachment: Buffer.from(temporaryLogs.join('\n')), name: "console.txt"}];
                     }
@@ -630,55 +716,69 @@ client.on('messageCreate', async message => {
     } 
 
     if (ranCommand) return;
-    if (message.channel.id !== webhookData.ChannelID || message.system) return;
-    if (relaySockets.length === 0 || !relaySockets.some(socket => socket.readyState === 1)) return message.react('⚠️');
+	for(whdata in webhookData["channels"]){
+		if ( message.system || message.content.trimStart().startsWith(config.ManagerCommandPrefix) ) return;
+	};
+	if (relaySockets.length === 0 || !relaySockets.some(socket => socket.readyState === 1)) return message.react('⚠️');
 
-    if (message.cleanContent.length > config.MaxMessageLength) return message.react('❌');
+	if (message.cleanContent.length > config.MaxMessageLength) return message.react('❌');
 
-    let lines = message.content.split('\n');
-    if (lines.length > config.LineBreakLimit) return message.react('❌');
-    
-    let packet = {
-        type: "message",
-        color: message.member.displayHexColor,
-        author: message.member.displayName,
-        content: message.cleanContent || "[attachment]"
-    };
+	let lines = message.content.split('\n');
+	if (lines.length > config.LineBreakLimit) return message.react('❌');
+	
+	let packet = {
+		type: "message",
+		color: message.member.displayHexColor,
+		author: message.member.displayName,
+		content: message.cleanContent || "[attachment]",
+		time: Math.floor(Date.now() / 1000)
+	};
 
-    if (message.reference) {
-        try {
-            let reference = await message.fetchReference();
-            if (reference.member) {
-                packet.replyingTo = {
-                    author: reference.member.displayName,
-                    color: reference.member.displayHexColor
-                }
-            } else if (reference.author) {
-                if (reference.author.id === client.user.id || reference.author.id === webhookData.Webhook.ID) {
-                    packet.replyingTo = {author: reference.author.username}
-                } else {
-                    try {
-                        let member = await message.guild.members.fetch(reference.author.id);
-                        if (member) {
-                            packet.replyingTo = {
-                                author: member.displayName,
-                                color: member.displayHexColor
-                            }
-                        } else {
-                            packet.replyingTo = {author: reference.author.username}
-                        }
-                    } catch (_) {
-                        packet.replyingTo = {author: reference.author.username}
-                    }
-                }
-            }
-        } finally {}
-    }
-
-    relaySockets.forEach(socket => {
-        if (socket.readyState === 1) {
-            socket.send(Buffer.from(JSON.stringify(packet)));
-        }
+	if (message.reference) {
+		try {
+			let reference = await message.fetchReference();
+			if (reference.member) {
+				packet.replyingTo = {
+					author: reference.member.displayName,
+					color: reference.member.displayHexColor
+				}
+			} else if (reference.author) {
+				if (reference.author.id === client.user.id || reference.author.id === webhookData.Webhook.ID) {
+					packet.replyingTo = {author: reference.author.username}
+				} else {
+					try {
+						let member = await message.guild.members.fetch(reference.author.id);
+						if (member) {
+							packet.replyingTo = {
+								author: member.displayName,
+								color: member.displayHexColor
+							}
+						} else {
+							packet.replyingTo = {author: reference.author.username}
+						}
+					} catch (_) {
+						packet.replyingTo = {author: reference.author.username}
+					}
+				}
+			}
+		} finally {}
+	}
+	
+	let mid;
+	for(data in webhookData["channels"]){
+		if(webhookData["channels"][data].ChannelID == message.channel.id){
+			mid=data;
+			break;
+		}
+	}
+	
+	
+	relaySockets.forEach(socket => {
+		if(socket.id==mid){
+			if (socket.readyState === 1) {
+				socket.send(Buffer.from(JSON.stringify(packet)));
+			}
+		};
     });
 });
 
@@ -686,7 +786,8 @@ var statustext = ""
 var statuscount = 1
 
 client.on('interactionCreate', interaction => {
-    if (interaction.isCommand() && interaction.commandName === "status") {
+	if(!interaction.isCommand()) return;
+    if (interaction.commandName === "status") {
         if (relaySockets.length === 0 || !relaySockets.some(socket => socket.readyState === 1)) 
             return interaction.reply('There is currently no connection to the server. Unable to request status.\nThe server automatically reconnects when an event happens, such as a player joining/leaving, or sending a message on the server.');
 
@@ -700,6 +801,7 @@ client.on('interactionCreate', interaction => {
                 from: interaction.member.displayName,
                 color: interaction.member.displayHexColor,
 				time: Math.floor(Date.now() / 1000),
+				format: "ext"
             };
 			
 			statustext = ""
@@ -799,7 +901,122 @@ client.on('interactionCreate', interaction => {
             });
 		    
         });
+    }else if(interaction.commandName === "statusm") {
+        if (relaySockets.length === 0 || !relaySockets.some(socket => socket.readyState === 1)) 
+            return interaction.reply('There is currently no connection to the server. Unable to request status.\nThe server automatically reconnects when an event happens, such as a player joining/leaving, or sending a message on the server.');
+
+        interaction.reply('Requesting server status...').then(() => {
+            if (relaySockets.length === 0 || !relaySockets.some(socket => socket.readyState === 1)) 
+                return interaction.editReply('Websocket is not connected.');
+
+            replyInteraction = interaction;
+            let packet = {
+                type: "status",
+                from: interaction.member.displayName,
+                color: interaction.member.displayHexColor,
+				time: Math.floor(Date.now() / 1000),
+				format: "simple"
+            };
+			
+			statustext = ""
+		    statuscount = 1
+			
+			
+            relaySockets.forEach(socket => {
+                if (socket.readyState === 1) {
+                    socket.send(Buffer.from(JSON.stringify(packet)));
+                }
+				
+				statusTimeout[socket.id] = setTimeout(() => {
+
+					sendCommand('status',socket.id)
+						.then(response => {
+							
+							
+							const statustable = parseStatusData(response);
+							
+							let [name, steamid, joined, status] = ['Name', 'Steam ID', 'Time Connected', "Status"];
+
+							let maxNameLength    = name.length;
+							let maxSteamidLength = steamid.length;
+							let maxJoinTimestamp = joined.length;
+							let maxStatus        = status.length;
+
+							let rows = [];
+
+							let now = Math.round(Date.now() / 1000);
+							for (let i = 0; i < statustable.spawningPlayers.length; i++) {
+								let data = statustable.spawningPlayers[i];
+
+								let timeString = data.timeConnected;
+
+								let currentStatus = "Connecting";
+								maxNameLength    = Math.max(maxNameLength, data[0].length);
+								maxSteamidLength = Math.max(maxSteamidLength, data[1].length);
+								maxJoinTimestamp = Math.max(maxJoinTimestamp, timeString.length);
+								maxStatus        = Math.max(maxStatus, currentStatus.length);
+
+								rows.push([data[0], data[1], timeString, currentStatus]);
+							}
+
+							for (let i = 0; i < statustable.activePlayers.length; i++) {
+								let data = statustable.activePlayers[i];
+
+								if (data.name == undefined) data.name = "[no name received?]";
+								if (data.steamid == undefined) data.steamid = "[no steamid received?]";
+
+								let timeString = statustable.activePlayers.timeConnected;
+
+								let currentStatus = "Active";
+
+								maxNameLength    = Math.max(maxNameLength, data[0].length);
+								maxSteamidLength = Math.max(maxSteamidLength, data[1].length);
+								maxJoinTimestamp = Math.max(maxJoinTimestamp, timeString.length);
+								maxStatus        = Math.max(maxStatus, currentStatus.length);
+
+								rows.push([data[0], data[1], timeString, currentStatus]);
+							}
+
+
+							const numplayers = statustable.numPlayers;
+							
+							let linesOfText;
+							let servertext;
+							
+							if(numplayers>0){ 
+								linesOfText = rows.map(row => `${row[0]} | ${row[2]} | ${row[3]}`) 
+								serverText =  `**${statustable.hostname}**\n**${numplayers}** ${numplayers == 1 ? 'person is' : 'people are'} playing on map **${statustable.map}**\`\`\`\n${linesOfText.join('\n')}\`\`\``;
+							}else{
+								serverText =  `**${statustable.hostname}**\n**${numplayers}** ${numplayers == 1 ? 'person is' : 'people are'} playing on map **${statustable.map}**`;
+							};
+
+
+
+							if(statustext == ""){
+								replyInteraction?.editReply(serverText);
+								statustext = serverText;
+								statuscount++;
+							}else{
+								replyInteraction?.editReply(statustext + '\n\n' + serverText);
+							};
+						})
+						.catch(err => {
+							if(statustext == ""){
+								replyInteraction?.editReply("**" +socket.id + "**" + " Server is empty or unreachable.");
+								statustext = "**" +socket.id + "**" + " Server is empty or unreachable.";
+								statuscount++;
+							}else{
+								replyInteraction?.editReply(statustext + "\n\n" + "**" +socket.id + "**" + " Server is empty or unreachable.");
+							};
+						});
+					clearTimeout(statusTimeout[socket.id])
+				}, 700);
+				
+            });
+		    
+        });
     }
+	
 });
 
 client.on('ready', () => {
@@ -807,28 +1024,34 @@ client.on('ready', () => {
 
     getWebhook(true);
 
-    client.application.commands.set([{
-        name: "status",
-        description: "View how many players are on the server along with the map."
-    }]);
+    client.application.commands.set([
+		{
+			name: "status",
+			description: "View how many players are on the server along with the map."
+		},
+		{
+			name: "statusm",
+			description: "View how many players are on the server along with the map in a more compact way."
+		},
+	]);
 });
 
-process.on('unhandledRejection', async (reason, promise) => {
-    console.error(reason);
-    if (client.isReady() && webhook) {
-        await webhook.send({
-            username: "Error Reporting",
-            content: `Unhandled promise rejection:\`\`\`\n${reason.stack}\`\`\``
-        });
-    }
-});
+// process.on('unhandledRejection', async (reason, promise) => {
+    // console.error(reason);
+    // if (client.isReady() && webhook) {
+        // await webhook.send({
+            // username: "Error Reporting",
+            // content: `Unhandled promise rejection:\`\`\`\n${reason.stack}\`\`\``
+        // });
+    // }
+// });
 
-process.on('uncaughtException', (error, origin) => {
-    if (origin !== "uncaughtException") return;
+// process.on('uncaughtException', (error, origin) => {
+    // if (origin !== "uncaughtException") return;
     
-    console.error(error);
-    writeFileSync('./error.txt', error.stack);
-    process.exit();
-});
+    // console.error(error);
+    // writeFileSync('./error.txt', error.stack);
+    // process.exit();
+// });
 
 client.login(config.DiscordBotToken);
