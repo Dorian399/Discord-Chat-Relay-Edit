@@ -368,6 +368,10 @@ async function sendQueue(ws) {
 			
 			case "init": {
 				if (packet.id.length > 0) {
+					for(socket in relaySockets){
+						if(!relaySockets[socket] || relaySockets[socket].id == packet.id)
+							delete relaySockets[socket];
+					};
 					ws.id = packet.id
 					if(!config.HideWebsocketNotifs){
 						if (webhook && webhook[packet.id]) {
