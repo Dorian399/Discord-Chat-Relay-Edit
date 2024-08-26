@@ -28,7 +28,7 @@ function parseStatusData(input) {
     const lines = input.trim().split('\n');
     let hostname = '';
     let map = '';
-    let playersInfo = [];
+    let numPlayers = 0;
     let activePlayers = [];
     let spawningPlayers = [];
 
@@ -37,12 +37,15 @@ function parseStatusData(input) {
             hostname = line.split('hostname:')[1].trim();
         } else if (line.startsWith('map')) {
             // Correctly extract the map name
-            map = line.split('map     :')[1].trim().split(' ')[0];
+            map = line.split('map')[1].split(':')[1].trim().split(' ')[0];
         } else if (line.startsWith('players')) {
-            playersInfo = line.split('players :')[1].trim().match(/\d+/g);
+            const match = line.match(/\d+/);  // Extract the first number which represents the number of players
+            if (match) {
+                numPlayers = parseInt(match[0], 10);
+            }
         } else if (line.startsWith('#')) {
             const playerInfo = line.trim().split(/\s+/);
-            const name = playerInfo.slice(2, playerInfo.length - 5).join(' ').replace(/"/g, '');
+            const name = playerInfo.slice(1, playerInfo.length - 5).join(' ').replace(/"/g, '');
             const steamID = playerInfo[playerInfo.length - 5];
             const timeConnected = playerInfo[playerInfo.length - 4];
             const status = playerInfo[playerInfo.length - 1];
@@ -56,8 +59,6 @@ function parseStatusData(input) {
         }
     });
 
-    const numPlayers = playersInfo ? parseInt(playersInfo[0], 10) : 0;
-
     return {
         hostname,
         map,
@@ -66,6 +67,7 @@ function parseStatusData(input) {
         spawningPlayers
     };
 }
+
 
 
 function sendCommand(command, id) {
@@ -234,34 +236,38 @@ async function sendQueue(ws) {
             } break;
 
             case "join/leave": {
-                let options = {
-                    username: "Player Connection Status"
-                }
-                // 1 = join, 2 = spawn, 3 = leave
-                switch (packet.messagetype) {
-                    case 1: {
-                        options.content = `${packet.username} (${packet.usersteamid}) has connected to the server.`;
-                    } break;
+				
+				if (!config.HideJoinLeaveNotifs){
+				
+					let options = {
+						username: "Player Connection Status"
+					}
+					// 1 = join, 2 = spawn, 3 = leave
+					switch (packet.messagetype) {
+						case 1: {
+							options.content = `${packet.username} (${packet.usersteamid}) has connected to the server.`;
+						} break;
 
-                    case 2: {
-                        let spawnText = '';
+						case 2: {
+							let spawnText = '';
 
-                        if (packet.userjointime) {
-                            let spawnTime = Math.round(Date.now()/1000) - packet.userjointime;
-                            let minutes = Math.floor(spawnTime / 60);
-                            let seconds = spawnTime % 60;
-                            spawnText = ` (took ${minutes}:${seconds < 10 ? `0${seconds}` : seconds})`;
-                        }
+							if (packet.userjointime) {
+								let spawnTime = Math.round(Date.now()/1000) - packet.userjointime;
+								let minutes = Math.floor(spawnTime / 60);
+								let seconds = spawnTime % 60;
+								spawnText = ` (took ${minutes}:${seconds < 10 ? `0${seconds}` : seconds})`;
+							}
 
-                        options.content = `${packet.username} (${packet.usersteamid}) has spawned into the server${spawnText}.`
-                    } break;
+							options.content = `${packet.username} (${packet.usersteamid}) has spawned into the server${spawnText}.`
+						} break;
 
-                    case 3: {
-                        options.content = `${packet.username} (${packet.usersteamid}) has left the server (${packet.reason}).`
-                    } break;
-                }
+						case 3: {
+							options.content = `${packet.username} (${packet.usersteamid}) has left the server (${packet.reason}).`
+						} break;
+					}
 
-                await webhook[packet.id].send(options);
+					await webhook[packet.id].send(options);
+				};
             } break;
 
             case "status": {
