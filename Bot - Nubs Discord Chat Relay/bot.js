@@ -210,6 +210,9 @@ let queue = [];
 let runningQueue = false;
 let replyInteraction;
 let statusTimeout = [];
+let updateTimeout = null;
+let updateInterval = null;
+
 async function sendQueue(ws) {
     if (!webhook || runningQueue)
         return; 
@@ -236,6 +239,9 @@ async function sendQueue(ws) {
             } break;
 
             case "join/leave": {
+				
+				UpdateStatusChannel()
+				UpdateCompactStatusChannel();
 				
 				if (!config.HideJoinLeaveNotifs){
 				
@@ -346,7 +352,12 @@ async function sendQueue(ws) {
 						statustext = statustext ? statustext + '\n\n' + serverText : serverText;
 						statuscount++;
 					} else {
-						replyInteraction.editReply((statustext ? statustext + '\n\n' : '') + serverText).then(() => replyInteraction = undefined);
+						if (replyInteraction.id != webhookData.StatusChannelMessageID && replyInteraction.id != webhookData.CompactStatusChannelMessageID)
+							replyInteraction.editReply((statustext ? statustext + '\n\n' : '') + serverText).then(() => replyInteraction = undefined);
+						else
+							replyInteraction.edit((statustext ? statustext + '\n\n' : '') + serverText).then(() => replyInteraction = undefined);
+
+							
 					}
 				} else if (format === "simple") {
 				
@@ -364,7 +375,10 @@ async function sendQueue(ws) {
 						statustext = statustext ? statustext + '\n\n' + serverText : serverText;
 						statuscount++;
 					} else {
-						replyInteraction.editReply((statustext ? statustext + '\n\n' : '') + serverText).then(() => replyInteraction = undefined);
+						if (replyInteraction.id != webhookData.StatusChannelMessageID && replyInteraction.id != webhookData.CompactStatusChannelMessageID)
+							replyInteraction.editReply((statustext ? statustext + '\n\n' : '') + serverText).then(() => replyInteraction = undefined);
+						else
+							replyInteraction.edit((statustext ? statustext + '\n\n' : '') + serverText).then(() => replyInteraction = undefined);
 					}
 				}
 			} break;
@@ -389,6 +403,19 @@ async function sendQueue(ws) {
 						}
 					};
 				};
+				
+				if (updateTimeout !== null)
+					clearTimeout(updateTimeout);
+				
+				if (updateInterval !== null)
+					clearInterval(updateInterval);
+				
+				
+				updateTimeout = setTimeout( () => { UpdateStatusChannel(); UpdateCompactStatusChannel(); }, 1000);
+				updateInterval = setInterval(() => {
+					UpdateStatusChannel();
+					UpdateCompactStatusChannel();
+				}, 60000);
 			} break;
         }
     }
@@ -432,7 +459,9 @@ async function getWebhook(json) {
                 }
 
                 webhookOptions.content += "Awaiting server connection...";
-                await wh.send(webhookOptions);
+				if(!config.HideBotStartMessage){
+					await wh.send(webhookOptions);
+				};
             }
         } catch (error) {
             
@@ -627,8 +656,30 @@ client.on('messageCreate', async message => {
 			
 			case "setstatuschannel": {
 				webhookData.StatusChannelID = message.channel.id;
-                saveIds();
                 message.react('✅');
+				setTimeout(() => {
+					message.channel.send('Status channel set.').then(messagee => {
+						webhookData.StatusChannelMessageID = messagee.id;
+						saveIds();
+						setTimeout(() => { UpdateStatusChannel() },2000);
+					});
+					if(message.length > 0)
+						message.delete();
+				}, 2000);
+            } break;
+			
+			case "setstatusmchannel": {
+				webhookData.CompactStatusChannelID = message.channel.id;
+                message.react('✅');
+				setTimeout(() => {
+					message.channel.send('Status channel set.').then(messagee => {
+						webhookData.CompactStatusChannelMessageID = messagee.id;
+						saveIds();
+						setTimeout(() => { UpdateCompactStatusChannel() },2000);
+					});
+					if(message.length > 0)
+						message.delete();
+				}, 2000);
             } break;
 
             case "restart":
@@ -805,11 +856,6 @@ var statuscount = 1
 
 
 function GetServersStatus(interaction){
-	for(socket in relaySockets){
-		if(!relaySockets[socket].id || relaySockets[socket].id == undefined)
-			delete relaySockets[socket];
-	
-	};
     if (relaySockets.length === 0 || !relaySockets.some(socket => socket.readyState === 1)) 
         return interaction.reply('There is currently no connection to the server. Unable to request status.\nThe server automatically reconnects when an event happens, such as a player joining/leaving, or sending a message on the server.');
 
@@ -927,12 +973,6 @@ function GetServersStatus(interaction){
 
 
 function GetCompactServersStatus(interaction){
-	
-	for(socket in relaySockets){
-		if(!relaySockets[socket].id || relaySockets[socket].id == undefined)
-			delete relaySockets[socket];
-	
-	};
 	
 	if (relaySockets.length === 0 || !relaySockets.some(socket => socket.readyState === 1)) 
         return interaction.reply('There is currently no connection to the server. Unable to request status.\nThe server automatically reconnects when an event happens, such as a player joining/leaving, or sending a message on the server.');
@@ -1055,6 +1095,250 @@ function GetCompactServersStatus(interaction){
 	    
     });
 }
+
+async function UpdateStatusChannel(){
+	if (!webhookData.StatusChannelID || webhookData.StatusChannelID.length == 0 || !webhookData.StatusChannelMessageID || webhookData.StatusChannelMessageID.length == 0)
+		return;
+	try {
+		let statuschannel = await client.channels.fetch(webhookData.StatusChannelID);
+		let statusmessage = await statuschannel.messages.fetch(webhookData.StatusChannelMessageID);
+		let interaction = statusmessage;
+		
+		if (relaySockets.length === 0 || !relaySockets.some(socket => socket.readyState === 1)) 
+			return interaction.edit('There is currently no connection to the server. Unable to request status.\nThe server automatically reconnects when an event happens, such as a player joining/leaving, or sending a message on the server.');
+
+		if (relaySockets.length === 0 || !relaySockets.some(socket => socket.readyState === 1)) 
+			return interaction.editReply('Websocket is not connected.');
+
+		replyInteraction = statusmessage;
+		
+		let packet = {
+			type: "status",
+			from: interaction.member.displayName,
+			color: interaction.member.displayHexColor,
+			time: Math.floor(Date.now() / 1000),
+			format: "ext"
+		};
+		
+		statustext = ""
+		statuscount = 1
+		
+		
+		relaySockets.forEach(socket => {
+			if (socket.readyState === 1) {
+				socket.send(Buffer.from(JSON.stringify(packet)));
+			}
+			
+			statusTimeout[socket.id] = setTimeout(() => {
+
+				sendCommand('status',socket.id)
+					.then(response => {
+						
+						
+						const statustable = parseStatusData(response);
+						
+						let [name, steamid, joined, status] = ['Name', 'Steam ID', 'Time Connected', "Status"];
+
+						let maxNameLength    = name.length;
+						let maxSteamidLength = steamid.length;
+						let maxJoinTimestamp = joined.length;
+						let maxStatus        = status.length;
+
+						let rows = [];
+
+						let now = Math.round(Date.now() / 1000);
+						for (let i = 0; i < statustable.spawningPlayers.length; i++) {
+							let data = statustable.spawningPlayers[i];
+
+							let timeString = data.timeConnected;
+
+							let currentStatus = "Connecting";
+							maxNameLength    = Math.max(maxNameLength, data[0].length);
+							maxSteamidLength = Math.max(maxSteamidLength, data[1].length);
+							maxJoinTimestamp = Math.max(maxJoinTimestamp, timeString.length);
+							maxStatus        = Math.max(maxStatus, currentStatus.length);
+
+							rows.push([data[0], data[1], timeString, currentStatus]);
+						}
+
+						for (let i = 0; i < statustable.activePlayers.length; i++) {
+							let data = statustable.activePlayers[i];
+
+							if (data.name == undefined) data.name = "[no name received?]";
+							if (data.steamid == undefined) data.steamid = "[no steamid received?]";
+
+							let timeString = statustable.activePlayers.timeConnected;
+
+							let currentStatus = "Active";
+
+							maxNameLength    = Math.max(maxNameLength, data[0].length);
+							maxSteamidLength = Math.max(maxSteamidLength, data[1].length);
+							maxJoinTimestamp = Math.max(maxJoinTimestamp, timeString.length);
+							maxStatus        = Math.max(maxStatus, currentStatus.length);
+
+							rows.push([data[0], data[1], timeString, currentStatus]);
+						}
+
+						let linesOfText = [
+							`| ${name + ' '.repeat(maxNameLength - name.length)} | ${steamid + ' '.repeat(maxSteamidLength - steamid.length)} | ${joined + ' '.repeat(maxJoinTimestamp - joined.length)} | ${status + ' '.repeat(maxStatus - status.length)} |`,
+							`|${'-'.repeat(maxNameLength + 2)}|${'-'.repeat(maxSteamidLength + 2)}|${'-'.repeat(maxJoinTimestamp + 2)}|${'-'.repeat(maxStatus + 2)}|`
+						];
+
+						for (let i = 0; i < rows.length; i++) {
+							let row = rows[i];
+							linesOfText.push(`| ${row[0] + ' '.repeat(maxNameLength - row[0].length)} | ${row[1] + ' '.repeat(maxSteamidLength - row[1].length)} | ${row[2] + ' '.repeat(maxJoinTimestamp - row[2].length)} | ${row[3] + ' '.repeat(maxStatus - row[3].length)} |`);
+						}
+
+						const numplayers = statustable.numPlayers;
+
+						let serverText = `**${statustable.hostname}**\n**${numplayers}** ${numplayers == 1 ? 'person is' : 'people are'} playing on map **${statustable.map}**\`\`\`\n${linesOfText.join('\n')}\`\`\``;
+						
+									
+						if(statustext == ""){
+							replyInteraction?.edit(serverText);
+							statustext = serverText;
+							statuscount++;
+						}else{
+							replyInteraction?.edit(statustext + '\n\n' + serverText);
+						};
+					})
+					.catch(err => {
+						return UpdateStatusChannel();
+					});
+				clearTimeout(statusTimeout[socket.id])
+			}, 700);
+			
+		});
+	} catch (error) {
+        console.error('Error updating status:', error);
+    }
+}
+
+async function UpdateCompactStatusChannel(){
+	if (!webhookData.CompactStatusChannelID || webhookData.CompactStatusChannelID.length == 0 || !webhookData.CompactStatusChannelMessageID || webhookData.CompactStatusChannelMessageID.length == 0)
+		return;
+	try {
+		let statuschannel = await client.channels.fetch(webhookData.CompactStatusChannelID);
+		let statusmessage = await statuschannel.messages.fetch(webhookData.CompactStatusChannelMessageID);
+		let interaction = statusmessage;
+		
+		if (relaySockets.length === 0 || !relaySockets.some(socket => socket.readyState === 1)) 
+			return interaction.edit('There is currently no connection to the server. Unable to request status.\nThe server automatically reconnects when an event happens, such as a player joining/leaving, or sending a message on the server.');
+
+		if (relaySockets.length === 0 || !relaySockets.some(socket => socket.readyState === 1)) 
+			return interaction.editReply('Websocket is not connected.');
+
+		replyInteraction = statusmessage;
+		
+		let packet = {
+			type: "status",
+			from: interaction.member.displayName,
+			color: interaction.member.displayHexColor,
+			time: Math.floor(Date.now() / 1000),
+			format: "simple"
+		};
+		
+		statustext = ""
+		statuscount = 1
+		
+		
+		relaySockets.forEach(socket => {
+			if (socket.readyState === 1) {
+				socket.send(Buffer.from(JSON.stringify(packet)));
+			}
+			
+			statusTimeout[socket.id] = setTimeout(() => {
+
+				sendCommand('status',socket.id)
+					.then(response => {
+						
+						
+						const statustable = parseStatusData(response);
+						
+						let [name, steamid, joined, status] = ['Name', 'Steam ID', 'Time Connected', "Status"];
+
+						let maxNameLength    = name.length;
+						let maxSteamidLength = steamid.length;
+						let maxJoinTimestamp = joined.length;
+						let maxStatus        = status.length;
+
+						let rows = [];
+
+						let now = Math.round(Date.now() / 1000);
+						for (let i = 0; i < statustable.spawningPlayers.length; i++) {
+							let data = statustable.spawningPlayers[i];
+
+							let timeString = data.timeConnected;
+
+							let currentStatus = "Connecting";
+							maxNameLength    = Math.max(maxNameLength, data[0].length);
+							maxSteamidLength = Math.max(maxSteamidLength, data[1].length);
+							maxJoinTimestamp = Math.max(maxJoinTimestamp, timeString.length);
+							maxStatus        = Math.max(maxStatus, currentStatus.length);
+							
+							rows.push([data[0], data[1], timeString, currentStatus]);
+						}
+
+						for (let i = 0; i < statustable.activePlayers.length; i++) {
+							let data = statustable.activePlayers[i];
+
+							if (data.name == undefined) data.name = "[no name received?]";
+							if (data.steamid == undefined) data.steamid = "[no steamid received?]";
+
+							let timeString = statustable.activePlayers.timeConnected;
+
+							let currentStatus = "Active";
+
+							maxNameLength    = Math.max(maxNameLength, data[0].length);
+							maxSteamidLength = Math.max(maxSteamidLength, data[1].length);
+							maxJoinTimestamp = Math.max(maxJoinTimestamp, timeString.length);
+							maxStatus        = Math.max(maxStatus, currentStatus.length);
+
+							rows.push([data[0], data[1], timeString, currentStatus]);
+						}
+
+
+						const numplayers = statustable.numPlayers;
+						
+						let linesOfText;
+						let servertext;
+						
+						for (let i = 0 ; i < rows.length; i++ ){
+							if (rows[i][0].length < maxNameLength)
+								rows[i][0] = rows[i][0] + " ";
+							else
+								break;
+						};
+						
+						if(numplayers>0){ 
+							linesOfText = rows.map(row => `${row[0]} | ${row[2]} | ${row[3]}`) 
+							serverText =  `**${statustable.hostname}**\n**${numplayers}** ${numplayers == 1 ? 'person is' : 'people are'} playing on map **${statustable.map}**\`\`\`\n${linesOfText.join('\n')}\`\`\``;
+						}else{
+							serverText =  `**${statustable.hostname}**\n**${numplayers}** ${numplayers == 1 ? 'person is' : 'people are'} playing on map **${statustable.map}**`;
+						};
+
+
+
+						if(statustext == ""){
+							replyInteraction?.edit(serverText);
+							statustext = serverText;
+							statuscount++;
+						}else{
+							replyInteraction?.edit(statustext + '\n\n' + serverText);
+						};
+					})
+					.catch(err => {
+						return UpdateCompactStatusChannel();
+					});
+				clearTimeout(statusTimeout[socket.id])
+			}, 700);
+			
+		});
+	} catch (error) {
+        console.error('Error updating status:', error);
+    }
+}
+
 
 
 client.on('interactionCreate', interaction => {
