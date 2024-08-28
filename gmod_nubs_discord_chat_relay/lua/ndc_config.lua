@@ -23,7 +23,13 @@ ndc.AFKTimeout = 90
 -- Set it to 0 to check every tick.
 ndc.AFKCheckInterval = 3
 
+-- Show "[Name] has requested server status" message on the chat ?
+
+ndc.StatusNotify = true
 
 -- If a message starts with any of these, the message will not be sent to Discord. This will hide commands being used in the relay.
 -- If you want commands to be visible, remove all strings. Would look like this: ndc.HiddenMessageStarts = {}
 ndc.HiddenMessageStarts = {"!", "@", "/"}
+
+-- This ID can be any string value, butit needs to be unique for each server you want to conenct to the websocket.
+ndc.ServerID = "server_id"
