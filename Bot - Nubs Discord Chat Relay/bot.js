@@ -27,6 +27,7 @@ let webhookData = JSON.parse(readFileSync("./ids.json"));
 function parseStatusData(input) {
     const lines = input.trim().split('\n');
     let hostname = '';
+	let ip = '';
     let map = '';
     let numPlayers = 0;
     let activePlayers = [];
@@ -35,6 +36,8 @@ function parseStatusData(input) {
     lines.forEach(line => {
         if (line.startsWith('hostname:')) {
             hostname = line.split('hostname:')[1].trim();
+		} else if (line.startsWith('udp/ip')) {
+            ip = line.split('udp/ip')[1].split(':')[1].split(' ')[1] + ":" + line.split('udp/ip')[1].split(':')[2].trim().split('(')[0].split(' ')[0];
         } else if (line.startsWith('map')) {
             map = line.split('map')[1].split(':')[1].trim().split(' ')[0];
         } else if (line.startsWith('players')) {
@@ -61,6 +64,7 @@ function parseStatusData(input) {
 
     return {
         hostname,
+		ip,
         map,
         numPlayers,
         activePlayers,
@@ -346,7 +350,7 @@ async function sendQueue(ws) {
 						linesOfText.push(`| ${row[0].padEnd(maxNameLength)} | ${row[1].padEnd(maxSteamidLength)} | ${row[2].padEnd(maxJoinTimestamp)} | ${row[3].padEnd(maxStatus)} |`);
 					}
 
-					let serverText = `**${packet.hostname}**\n**${numplayers}** ${numplayers == 1 ? 'person is' : 'people are'} playing on map **${packet.map}**\`\`\`\n${linesOfText.join('\n')}\`\`\``;
+					let serverText = `**${packet.hostname}**\n[${packet.ip}](https://vauff.com/connect.php?ip=${packet.ip})\n**${numplayers}** ${numplayers == 1 ? 'person is' : 'people are'} playing on map **${packet.map}**\`\`\`\n${linesOfText.join('\n')}\`\`\``;
 					
 					if (statuscount < relaySockets.length) {
 						statustext = statustext ? statustext + '\n\n' + serverText : serverText;
@@ -366,9 +370,9 @@ async function sendQueue(ws) {
 					
 					if(numplayers>0){ 
 						linesOfText = rows.map(row => `${row[0]} | ${row[2]} | ${row[3]}`) 
-						serverText =  `**${packet.hostname}**\n**${numplayers}** ${numplayers == 1 ? 'person is' : 'people are'} playing on map **${packet.map}**\`\`\`\n${linesOfText.join('\n')}\`\`\``;
+						serverText =  `**${packet.hostname}**\n[${packet.ip}](https://vauff.com/connect.php?ip=${packet.ip})\n**${numplayers}** ${numplayers == 1 ? 'person is' : 'people are'} playing on map **${packet.map}**\`\`\`\n${linesOfText.join('\n')}\`\`\``;
 					}else{
-						serverText =  `**${packet.hostname}**\n**${numplayers}** ${numplayers == 1 ? 'person is' : 'people are'} playing on map **${packet.map}**`;
+						serverText =  `**${packet.hostname}**\n[${packet.ip}](https://vauff.com/connect.php?ip=${packet.ip})\n**${numplayers}** ${numplayers == 1 ? 'person is' : 'people are'} playing on map **${packet.map}**`;
 					};
 
 					if (statuscount < relaySockets.length) {
@@ -415,7 +419,7 @@ async function sendQueue(ws) {
 				updateInterval = setInterval(() => {
 					UpdateStatusChannel();
 					UpdateCompactStatusChannel();
-				}, 60000);
+				}, 1000*config.StatusRefreshTime);
 			} break;
         }
     }
@@ -943,7 +947,7 @@ function GetServersStatus(interaction){
 
 						const numplayers = statustable.numPlayers;
 
-						let serverText = `**${statustable.hostname}**\n**${numplayers}** ${numplayers == 1 ? 'person is' : 'people are'} playing on map **${statustable.map}**\`\`\`\n${linesOfText.join('\n')}\`\`\``;
+						let serverText = `**${statustable.hostname}**\n[${statustable.ip}](https://vauff.com/connect.php?ip=${statustable.ip})\n**${numplayers}** ${numplayers == 1 ? 'person is' : 'people are'} playing on map **${statustable.map}**\`\`\`\n${linesOfText.join('\n')}\`\`\``;
 						
 									
 						if(statustext == ""){
@@ -1064,9 +1068,9 @@ function GetCompactServersStatus(interaction){
 						
 						if(numplayers>0){ 
 							linesOfText = rows.map(row => `${row[0]} | ${row[2]} | ${row[3]}`) 
-							serverText =  `**${statustable.hostname}**\n**${numplayers}** ${numplayers == 1 ? 'person is' : 'people are'} playing on map **${statustable.map}**\`\`\`\n${linesOfText.join('\n')}\`\`\``;
+							serverText =  `**${statustable.hostname}**\n[${statustable.ip}](https://vauff.com/connect.php?ip=${statustable.ip})\n**${numplayers}** ${numplayers == 1 ? 'person is' : 'people are'} playing on map **${statustable.map}**\`\`\`\n${linesOfText.join('\n')}\`\`\``;
 						}else{
-							serverText =  `**${statustable.hostname}**\n**${numplayers}** ${numplayers == 1 ? 'person is' : 'people are'} playing on map **${statustable.map}**`;
+							serverText =  `**${statustable.hostname}**\n[${statustable.ip}](https://vauff.com/connect.php?ip=${statustable.ip})\n**${numplayers}** ${numplayers == 1 ? 'person is' : 'people are'} playing on map **${statustable.map}**`;
 						};
 
 
@@ -1125,6 +1129,7 @@ async function UpdateStatusChannel(){
 		
 		
 		relaySockets.forEach(socket => {
+			
 			if (socket.readyState === 1) {
 				socket.send(Buffer.from(JSON.stringify(packet)));
 			}
@@ -1191,7 +1196,7 @@ async function UpdateStatusChannel(){
 
 						const numplayers = statustable.numPlayers;
 
-						let serverText = `**${statustable.hostname}**\n**${numplayers}** ${numplayers == 1 ? 'person is' : 'people are'} playing on map **${statustable.map}**\`\`\`\n${linesOfText.join('\n')}\`\`\``;
+						let serverText = `**${statustable.hostname}**\n[${statustable.ip}](https://vauff.com/connect.php?ip=${statustable.ip})\n**${numplayers}** ${numplayers == 1 ? 'person is' : 'people are'} playing on map **${statustable.map}**\`\`\`\n${linesOfText.join('\n')}\`\`\``;
 						
 									
 						if(statustext == ""){
@@ -1243,6 +1248,7 @@ async function UpdateCompactStatusChannel(){
 		
 		
 		relaySockets.forEach(socket => {
+			
 			if (socket.readyState === 1) {
 				socket.send(Buffer.from(JSON.stringify(packet)));
 			}
@@ -1312,9 +1318,9 @@ async function UpdateCompactStatusChannel(){
 						
 						if(numplayers>0){ 
 							linesOfText = rows.map(row => `${row[0]} | ${row[2]} | ${row[3]}`) 
-							serverText =  `**${statustable.hostname}**\n**${numplayers}** ${numplayers == 1 ? 'person is' : 'people are'} playing on map **${statustable.map}**\`\`\`\n${linesOfText.join('\n')}\`\`\``;
+							serverText =  `**${statustable.hostname}**\n[${statustable.ip}](https://vauff.com/connect.php?ip=${statustable.ip})\n**${numplayers}** ${numplayers == 1 ? 'person is' : 'people are'} playing on map **${statustable.map}**\`\`\`\n${linesOfText.join('\n')}\`\`\``;
 						}else{
-							serverText =  `**${statustable.hostname}**\n**${numplayers}** ${numplayers == 1 ? 'person is' : 'people are'} playing on map **${statustable.map}**`;
+							serverText =  `**${statustable.hostname}**\n[${statustable.ip}](https://vauff.com/connect.php?ip=${statustable.ip})\n**${numplayers}** ${numplayers == 1 ? 'person is' : 'people are'} playing on map **${statustable.map}**`;
 						};
 
 
@@ -1340,16 +1346,17 @@ async function UpdateCompactStatusChannel(){
 }
 
 
-
-client.on('interactionCreate', interaction => {
-	if(!interaction.isCommand()) return;
-    if (interaction.commandName === "status") {
-		GetServersStatus(interaction);
-    }else if(interaction.commandName === "statusm") {
-       GetCompactServersStatus(interaction);
-    }
-	
-});
+if (!config.DisableInteractions){
+	client.on('interactionCreate', interaction => {
+		if(!interaction.isCommand()) return;
+		if (interaction.commandName === "status") {
+			GetServersStatus(interaction);
+		}else if(interaction.commandName === "statusm") {
+		   GetCompactServersStatus(interaction);
+		}
+		
+	});
+};
 
 client.on('ready', () => {
     console.log("Bot initialized");

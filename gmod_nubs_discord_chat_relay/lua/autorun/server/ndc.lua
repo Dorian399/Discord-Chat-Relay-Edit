@@ -120,6 +120,7 @@ function connectToWebsocket()
 				response.connectingPlayers = connecting
 				response.players = spawnedPlayers
 				response.hostname = GetHostName()
+				response.ip = game.GetIPAddress()
 				response.format = packet.format
 
                 ndc.websocket:Send(util.TableToJSON(response))
