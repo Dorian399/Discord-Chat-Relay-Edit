@@ -364,12 +364,20 @@ async function sendQueue(ws) {
 							
 					}
 				} else if (format === "simple") {
+					
+					let maxNameLength = 0;
+
+					// Calculate max lengths
+					for (let row of rows) {
+						maxNameLength = Math.max(maxNameLength, row[0].length);
+					}
+					
 				
 					let linesOfText;
 					let servertext;
 					
 					if(numplayers>0){ 
-						linesOfText = rows.map(row => `${row[0]} | ${row[2]} | ${row[3]}`) 
+						linesOfText = rows.map(row => `${row[0].padEnd(maxNameLength)} | ${row[2]} | ${row[3]}`) 
 						serverText =  `**${packet.hostname}**\n[${packet.ip}](https://vauff.com/connect.php?ip=${packet.ip})\n**${numplayers}** ${numplayers == 1 ? 'person is' : 'people are'} playing on map **${packet.map}**\`\`\`\n${linesOfText.join('\n')}\`\`\``;
 					}else{
 						serverText =  `**${packet.hostname}**\n[${packet.ip}](https://vauff.com/connect.php?ip=${packet.ip})\n**${numplayers}** ${numplayers == 1 ? 'person is' : 'people are'} playing on map **${packet.map}**`;
@@ -942,7 +950,7 @@ function GetServersStatus(interaction){
 
 						for (let i = 0; i < rows.length; i++) {
 							let row = rows[i];
-							linesOfText.push(`| ${row[0] + ' '.repeat(maxNameLength - row[0].length)} | ${row[1] + ' '.repeat(maxSteamidLength - row[1].length)} | ${row[2] + ' '.repeat(maxJoinTimestamp - row[2].length)} | ${row[3] + ' '.repeat(maxStatus - row[3].length)} |`);
+							linesOfText.push(`| ${row[0].padEnd(maxNameLength)} | ${row[1] + ' '.repeat(maxSteamidLength - row[1].length)} | ${row[2] + ' '.repeat(maxJoinTimestamp - row[2].length)} | ${row[3] + ' '.repeat(maxStatus - row[3].length)} |`);
 						}
 
 						const numplayers = statustable.numPlayers;
@@ -1067,7 +1075,7 @@ function GetCompactServersStatus(interaction){
 						};
 						
 						if(numplayers>0){ 
-							linesOfText = rows.map(row => `${row[0]} | ${row[2]} | ${row[3]}`) 
+							linesOfText = rows.map(row => `${row[0].padEnd(maxNameLength)} | ${row[2]} | ${row[3]}`) 
 							serverText =  `**${statustable.hostname}**\n[${statustable.ip}](https://vauff.com/connect.php?ip=${statustable.ip})\n**${numplayers}** ${numplayers == 1 ? 'person is' : 'people are'} playing on map **${statustable.map}**\`\`\`\n${linesOfText.join('\n')}\`\`\``;
 						}else{
 							serverText =  `**${statustable.hostname}**\n[${statustable.ip}](https://vauff.com/connect.php?ip=${statustable.ip})\n**${numplayers}** ${numplayers == 1 ? 'person is' : 'people are'} playing on map **${statustable.map}**`;
@@ -1191,7 +1199,7 @@ async function UpdateStatusChannel(){
 
 						for (let i = 0; i < rows.length; i++) {
 							let row = rows[i];
-							linesOfText.push(`| ${row[0] + ' '.repeat(maxNameLength - row[0].length)} | ${row[1] + ' '.repeat(maxSteamidLength - row[1].length)} | ${row[2] + ' '.repeat(maxJoinTimestamp - row[2].length)} | ${row[3] + ' '.repeat(maxStatus - row[3].length)} |`);
+							linesOfText.push(`| ${row[0].padEnd(maxNameLength)} | ${row[1] + ' '.repeat(maxSteamidLength - row[1].length)} | ${row[2] + ' '.repeat(maxJoinTimestamp - row[2].length)} | ${row[3] + ' '.repeat(maxStatus - row[3].length)} |`);
 						}
 
 						const numplayers = statustable.numPlayers;
@@ -1308,16 +1316,10 @@ async function UpdateCompactStatusChannel(){
 						
 						let linesOfText;
 						let servertext;
-						
-						for (let i = 0 ; i < rows.length; i++ ){
-							if (rows[i][0].length < maxNameLength)
-								rows[i][0] = rows[i][0] + " ";
-							else
-								break;
-						};
+					
 						
 						if(numplayers>0){ 
-							linesOfText = rows.map(row => `${row[0]} | ${row[2]} | ${row[3]}`) 
+							linesOfText = rows.map(row => `${row[0].padEnd(maxNameLength)} | ${row[2]} | ${row[3]}`) 
 							serverText =  `**${statustable.hostname}**\n[${statustable.ip}](https://vauff.com/connect.php?ip=${statustable.ip})\n**${numplayers}** ${numplayers == 1 ? 'person is' : 'people are'} playing on map **${statustable.map}**\`\`\`\n${linesOfText.join('\n')}\`\`\``;
 						}else{
 							serverText =  `**${statustable.hostname}**\n[${statustable.ip}](https://vauff.com/connect.php?ip=${statustable.ip})\n**${numplayers}** ${numplayers == 1 ? 'person is' : 'people are'} playing on map **${statustable.map}**`;
