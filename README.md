@@ -65,7 +65,7 @@ This is a reupload because I accidentally included personal information in a pre
 17. Start the bot with `start.bat`.
     1. This batch file has a very basic auto restart in the event the bot crashes for whatever reason. Otherwise this is unnecessary if you don't want it or want something better. \
     To just start it without automatic restarting, do `node bot.js`
-18. Find the channel you want to be used as the communication relay, and type `--setgmodchannel`. If succesful, the bot will react with ✅. From there, you should be good to go.
+18. Find the channel you want to be used as the communication relay, and type `--setgmodchannel [ServerID]`. If succesful, the bot will react with ✅. From there, you should be good to go.
 
 # Installation:
 ### Garry's Mod server setup:
