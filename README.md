@@ -1,6 +1,18 @@
 # Nubs Discord Chat Relay
 Relays messages sent in Discord to a Garry's Mod server, and vice versa. It works by you hosting a Discord bot. This is needed to read messages and send player messages as webhooks. We can't use the Garry's Mod server to post to a webhook because Discord blocks post requests from Garry's Mod for some reason. The bot and server connect by the bot hosting a websocker server.
 
+# Fork update 08/29/2024
+- On gmod server:
+  - Each server needs their unique ID to work properly with the relay.
+  - Added more configurable options.
+- On Discord
+  - Added multiple servers support.
+  - RCON support and fallback.
+  - Permanent status channel that updates in realtime.
+  - New /statusm command that shows the server status in a more compact way, which also scales properly on mobile.
+  - New configuration options.
+  - Removed AFK system. (It's pretty heavy for such a little thing).
+
 # Latest update 7/23/23
 - On gmod server:
   - Messages on the server that start with `!`, `@`, or `/` are hidden
