@@ -41,6 +41,9 @@ This is a reupload because I accidentally included personal information in a pre
 6. Install [Axios](https://github.com/axios/axios) with `npm install axios`.
     1. We need this to fetch Steam avatars. 
     2. At the time of writing this, I'm running version `1.4.0`.
+6. Install [Rcon]](https://github.com/pushrax/node-rcon) with `npm install rcon`.
+    1. We need this for all the rcon functionality. 
+    2. At the time of writing this, I'm running version `1.1.0`.
 7. Open file explorer and go to where you put your bot, and find `config.js`. The file will have comments also walking you through filling out what you need to fill out. The next few steps (up to #17) also walk you through filling out the config.
 8. Go to [Discord Developer Portal](https://discord.com/developers/applications) and create a new application.
 9. Go to the bot section and create a new bot account.
@@ -66,6 +69,7 @@ This is a reupload because I accidentally included personal information in a pre
     1. This batch file has a very basic auto restart in the event the bot crashes for whatever reason. Otherwise this is unnecessary if you don't want it or want something better. \
     To just start it without automatic restarting, do `node bot.js`
 18. Find the channel you want to be used as the communication relay, and type `--setgmodchannel [ServerID]`. If succesful, the bot will react with ✅. From there, you should be good to go.
+19. (Optional) Find the channel you want to be used as the status channel, and type `--setstatuschannel` or `--setstatusmchannel` for the more compact version. After adding it remove your original message and only leave the message sent by the bot.
 
 # Installation:
 ### Garry's Mod server setup:
