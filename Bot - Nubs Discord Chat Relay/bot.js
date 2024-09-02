@@ -1007,6 +1007,8 @@ function GetCompactServersStatus(interaction){
 		
 		
         relaySockets.forEach(socket => {
+			
+			
             if (socket.readyState === 1) {
                 socket.send(Buffer.from(JSON.stringify(packet)));
             }
@@ -1136,7 +1138,14 @@ async function UpdateStatusChannel(){
 		statuscount = 1
 		
 		
-		relaySockets.forEach(socket => {
+		relaySockets.forEach(async socket => {
+			
+			await new Promise(r => setTimeout(r, 60));
+			
+			for(s in relaySockets){
+				if(relaySockets[s].id == undefined)
+					delete relaySockets[s];
+			};
 			
 			if (socket.readyState === 1) {
 				socket.send(Buffer.from(JSON.stringify(packet)));
@@ -1216,11 +1225,10 @@ async function UpdateStatusChannel(){
 						};
 					})
 					.catch(err => {
-						return UpdateStatusChannel();
+						return;
 					});
 				clearTimeout(statusTimeout[socket.id])
 			}, 700);
-			
 		});
 	} catch (error) {
         console.error('Error updating status:', error);
@@ -1255,7 +1263,14 @@ async function UpdateCompactStatusChannel(){
 		statuscount = 1
 		
 		
-		relaySockets.forEach(socket => {
+		relaySockets.forEach(async socket => {
+			
+			await new Promise(r => setTimeout(r, 60));
+			
+			for(s in relaySockets){
+				if(relaySockets[s].id == undefined)
+					delete relaySockets[s];
+			};
 			
 			if (socket.readyState === 1) {
 				socket.send(Buffer.from(JSON.stringify(packet)));
@@ -1336,7 +1351,7 @@ async function UpdateCompactStatusChannel(){
 						};
 					})
 					.catch(err => {
-						return UpdateCompactStatusChannel();
+						return;
 					});
 				clearTimeout(statusTimeout[socket.id])
 			}, 700);
