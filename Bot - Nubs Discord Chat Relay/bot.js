@@ -115,7 +115,8 @@ const client = new Client({
         GatewayIntentBits.GuildMessages, 
         GatewayIntentBits.GuildWebhooks, 
         GatewayIntentBits.MessageContent
-    ]
+    ],
+	restRequestTimeout: 15000
 });
 
 if (config.DiscordUsernameFix) {
@@ -382,6 +383,7 @@ async function sendQueue(ws) {
 					}else{
 						serverText =  `**${packet.hostname}**\n[${packet.ip}](https://vauff.com/connect.php?ip=${packet.ip})\n**${numplayers}** ${numplayers == 1 ? 'person is' : 'people are'} playing on map **${packet.map}**`;
 					};
+					
 
 					if (statuscount < relaySockets.length) {
 						statustext = statustext ? statustext + '\n\n' + serverText : serverText;
@@ -1355,7 +1357,6 @@ async function UpdateCompactStatusChannel(){
 					});
 				clearTimeout(statusTimeout[socket.id])
 			}, 700);
-			
 		});
 	} catch (error) {
         console.error('Error updating status:', error);
@@ -1379,35 +1380,37 @@ client.on('ready', () => {
     console.log("Bot initialized");
 
     getWebhook(true);
-
-    client.application.commands.set([
-		{
-			name: "status",
-			description: "View how many players are on the server along with the map."
-		},
-		{
-			name: "statusm",
-			description: "View how many players are on the server along with the map in a more compact way."
-		},
-	]);
+	if (!config.DisableInteractions){
+		client.application.commands.set([
+			{
+				name: "status",
+				description: "View how many players are on the server along with the map."
+			},
+			{
+				name: "statusm",
+				description: "View how many players are on the server along with the map in a more compact way."
+			},
+		]);
+	};
+	if(config.ServerRcons){
+		setTimeout(() => {
+			for(let id in config.ServerRcons){
+				sendCommand("reconnectwebsocket",id)
+			};
+		}, 15000);
+	};
 });
 
-// process.on('unhandledRejection', async (reason, promise) => {
-    // console.error(reason);
-    // if (client.isReady() && webhook) {
-        // await webhook.send({
-            // username: "Error Reporting",
-            // content: `Unhandled promise rejection:\`\`\`\n${reason.stack}\`\`\``
-        // });
-    // }
-// });
+process.on('unhandledRejection', async (reason, promise) => {
+    console.error(reason);
+});
 
-// process.on('uncaughtException', (error, origin) => {
-    // if (origin !== "uncaughtException") return;
+process.on('uncaughtException', (error, origin) => {
+    if (origin !== "uncaughtException") return;
     
-    // console.error(error);
-    // writeFileSync('./error.txt', error.stack);
-    // process.exit();
-// });
+    console.error(error);
+    writeFileSync('./error.txt', error.stack);
+    process.exit();
+});
 
 client.login(config.DiscordBotToken);

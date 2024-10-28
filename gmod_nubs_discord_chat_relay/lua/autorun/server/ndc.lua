@@ -185,6 +185,7 @@ end
 gameevent.Listen( "player_say" )
 hook.Add("player_say", "nubs_discord_communicator", function(data)
 	local message = data.text
+	if message == nil or message:match("^%s*$") then return end
 	local ply = Player(data.userid)
 
 	for i, prefix in ipairs(ndc.HiddenMessageStarts) do 
@@ -300,3 +301,10 @@ hook.Add("ShutDown", "discord_comms_disconnect", function()
         ndc.websocket:Close()
     end
 end)
+
+concommand.Add( "reconnectwebsocket", function(ply)  
+	if IsValid(ply) then return end
+	RunConsoleCommand("sv_hibernate_think","1")
+	connectToWebsocket()
+	timer.Simple(5,function() RunConsoleCommand("sv_hibernate_think","0") end)
+end )
