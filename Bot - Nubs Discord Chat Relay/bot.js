@@ -234,9 +234,11 @@ async function sendQueue(ws) {
                         username: packet.from
                     }
                     
-                    await getSteamAvatar(packet.fromSteamID);
-                    if (avatarCache[packet.fromSteamID]) 
-                        opts.avatarURL = avatarCache[packet.fromSteamID].avatar;
+					if(packet.fromSteamID != 0){
+						await getSteamAvatar(packet.fromSteamID);
+						if (avatarCache[packet.fromSteamID]) 
+							opts.avatarURL = avatarCache[packet.fromSteamID].avatar;
+					};
                     
 					
                     await webhook[packet.id].send(opts);
