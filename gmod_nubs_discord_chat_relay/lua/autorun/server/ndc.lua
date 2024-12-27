@@ -52,6 +52,14 @@ function hexToCol(hex)
     end
 end
 
+-- Check if username is complient with discord criterias.
+
+local function IsValidUsername(user)
+	if string.len(user) < 3 then return false end
+	if string.len(user) > 32 then return false end
+	return string.match(user, "^[^%w%s]+$") == nil
+end
+
 
 -- In case connection to the websocket server has been lost, we are going to resort to a queue to send any new message when reconnected.
 ndc.queue = ndc.queue or {} 
@@ -106,7 +114,7 @@ function connectToWebsocket()
                 local spawnedPlayers = {}
                 for i, ply in ipairs(player.GetHumans()) do 
                     table.insert(spawnedPlayers, {
-                        name     = ply:Nick(), 
+                        name     = string.JavascriptSafe(ply:Nick()), 
                         steamid  = ply:SteamID(), 
                         jointime = ply:TimeConnected(), 
                         afktime  = false
@@ -196,7 +204,11 @@ hook.Add("player_say", "nubs_discord_communicator", function(data)
 		local packet = {}
 		packet.type = "message"
 		if IsValid(ply) then
-			packet.from = ply:Nick()
+			local nick = string.JavascriptSafe(ply:Nick())
+			if not IsValidUsername(nick) then
+				nick = ply:SteamID64()
+			end
+			packet.from = nick
 			packet.fromSteamID = ply:SteamID64()
 			packet.id = ndc.ServerID
 		else
@@ -247,7 +259,7 @@ hook.Add("PlayerInitialSpawn", "discord_comms_spawn", function(ply)
         local packet = {}
         packet.type = "join/leave"
         packet.messagetype = 2 -- 1 = join, 2 = first spawn, 3 = leave
-        packet.username = ply:Nick()
+        packet.username = string.JavascriptSafe(ply:Nick())
         packet.usersteamid = ply:SteamID()
         packet.userjointime = ndc.playerJoinTimestamps[ply:SteamID()] or 0
 		packet.id = ndc.ServerID

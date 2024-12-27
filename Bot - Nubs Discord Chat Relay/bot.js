@@ -39,19 +39,23 @@ function parseStatusData(input) {
 		} else if (line.startsWith('udp/ip')) {
             ip = line.split('udp/ip')[1].split(':')[1].split(' ')[1] + ":" + line.split('udp/ip')[1].split(':')[2].trim().split('(')[0].split(' ')[0];
         } else if (line.startsWith('map')) {
-            map = line.split('map')[1].split(':')[1].trim().split(' ')[0];
+            map = line.split(':')[1].trim().split(' ')[0];
         } else if (line.startsWith('players')) {
             const match = line.match(/\d+/);
             if (match) {
                 numPlayers = parseInt(match[0], 10);
             }
-        } else if (line.startsWith('#')) {
+        } else if (line.startsWith('#') && !line.startsWith('# userid')) {
             const playerInfo = line.trim().split(/\s+/);
+			
+			
             
-            const name = playerInfo.slice(2, playerInfo.length - 5).join(' ').replace(/"/g, ''); // Exclude userid
-            const steamID = playerInfo[playerInfo.length - 5];
-            const timeConnected = playerInfo[playerInfo.length - 4];
-            const status = playerInfo[playerInfo.length - 1];
+            let name = playerInfo.slice(2, playerInfo.length - 5)[0].replace(/[^a-zA-Z0-9_-]/g, '');
+			if(name == "")
+				name = "InvalidUsername";
+            const steamID = playerInfo.slice(2, playerInfo.length - 5)[1];
+            const timeConnected = playerInfo[playerInfo.length - 5];
+            const status = playerInfo[playerInfo.length - 2];
             const playerData = [name, steamID, timeConnected, status];
 
             if (status === 'active') {
@@ -918,7 +922,7 @@ function GetServersStatus(interaction){
 						for (let i = 0; i < statustable.spawningPlayers.length; i++) {
 							let data = statustable.spawningPlayers[i];
 
-							let timeString = data.timeConnected;
+							let timeString = data[2];
 
 							let currentStatus = "Connecting";
 							maxNameLength    = Math.max(maxNameLength, data[0].length);
@@ -935,7 +939,7 @@ function GetServersStatus(interaction){
 							if (data.name == undefined) data.name = "[no name received?]";
 							if (data.steamid == undefined) data.steamid = "[no steamid received?]";
 
-							let timeString = statustable.activePlayers.timeConnected;
+							let timeString = data[2];
 
 							let currentStatus = "Active";
 
@@ -1038,7 +1042,7 @@ function GetCompactServersStatus(interaction){
 						for (let i = 0; i < statustable.spawningPlayers.length; i++) {
 							let data = statustable.spawningPlayers[i];
 
-							let timeString = data.timeConnected;
+							let timeString = data[2];
 
 							let currentStatus = "Connecting";
 							maxNameLength    = Math.max(maxNameLength, data[0].length);
@@ -1055,7 +1059,7 @@ function GetCompactServersStatus(interaction){
 							if (data.name == undefined) data.name = "[no name received?]";
 							if (data.steamid == undefined) data.steamid = "[no steamid received?]";
 
-							let timeString = statustable.activePlayers.timeConnected;
+							let timeString = data[2];
 
 							let currentStatus = "Active";
 
@@ -1301,7 +1305,7 @@ async function UpdateCompactStatusChannel(){
 						for (let i = 0; i < statustable.spawningPlayers.length; i++) {
 							let data = statustable.spawningPlayers[i];
 
-							let timeString = data.timeConnected;
+							let timeString = data[2];
 
 							let currentStatus = "Connecting";
 							maxNameLength    = Math.max(maxNameLength, data[0].length);
@@ -1313,7 +1317,7 @@ async function UpdateCompactStatusChannel(){
 						}
 
 						for (let i = 0; i < statustable.activePlayers.length; i++) {
-							let data = statustable.activePlayers[i];
+							let data = data[2];
 
 							if (data.name == undefined) data.name = "[no name received?]";
 							if (data.steamid == undefined) data.steamid = "[no steamid received?]";
