@@ -804,9 +804,16 @@ client.on('messageCreate', async message => {
     } 
 
     if (ranCommand) return;
+	
+	let iscurchannel_included = false;
+	
 	for(whdata in webhookData["channels"]){
+		if (message.channel.id == webhookData["channels"][whdata]["ChannelID"]) iscurchannel_included = true;
 		if ( message.system || message.content.trimStart().startsWith(config.ManagerCommandPrefix) ) return;
 	};
+	
+	if (!iscurchannel_included) return;
+	
 	if (relaySockets.length === 0 || !relaySockets.some(socket => socket.readyState === 1)) return message.react('⚠️');
 
 	if (message.cleanContent.length > config.MaxMessageLength) return message.react('❌');
