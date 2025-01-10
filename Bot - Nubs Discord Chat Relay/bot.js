@@ -99,12 +99,12 @@ function sendCommand(command, id) {
             if (fullResponse) {
                 resolve(fullResponse); 
             } else {
-                reject(new Error('No response received from server'));
+                console.log('No response received from server');
             }
         });
 
         rcon.on('error', (err) => {
-            reject(err);
+            console.log(err);
         });
 
         rcon.connect();
@@ -1416,6 +1416,7 @@ client.on('ready', () => {
 
 process.on('unhandledRejection', async (reason, promise) => {
     console.error(reason);
+	process.exit();
 });
 
 process.on('uncaughtException', (error, origin) => {
